@@ -1,3 +1,42 @@
+# ADRecon – Fork ichabot
+
+> **Fork** von [adrecon/ADRecon](https://github.com/adrecon/ADRecon) (v1.27, Commit `d2ba12c`, Lizenz AGPL-3.0).
+> Angepasst für AD-Audits in kleinen und mittleren Umgebungen. Alle Änderungen: [CHANGELOG-FORK.md](CHANGELOG-FORK.md).
+> Nicht offiziell, kein Support durch das Original-Projekt.
+
+## Was ist anders
+
+- Fix für `Invalid enumeration context` / `Ungültiger Aufzählungskontext` im Modul Computers (ADWS)
+- Neue Spalte **„Inactive (> n days)“** für Benutzer und Computer, inklusive nie angemeldeter Konten
+- `-PreciseLastLogon`: exakte letzte Anmeldung über `lastLogon` aller DCs
+- `-CsvDelimiter ';'` und CSV als UTF-8 mit BOM (Umlaute, deutsches Excel)
+- `-SkipDNSResolve`: keine DNS-Auflösung der Computer
+- LAPS-Passwörter und BitLocker-Keys nicht mehr in der Standardauswahl
+- Excel-Report ohne installiertes Excel über das Modul ImportExcel (vereinfacht)
+
+## Schnellstart KMU-Audit
+
+```powershell
+# auf einem domänenverbundenen Rechner, normale PowerShell reicht
+powershell -ExecutionPolicy Bypass -File .\Invoke-ADAudit.ps1
+# andere Grenze / anderer Zielordner
+powershell -ExecutionPolicy Bypass -File .\Invoke-ADAudit.ps1 -DormantDays 60 -BaseDir D:\Audit
+```
+
+`Invoke-ADAudit.ps1` erstellt unter `C:\AD-Audit\Report-<Datum>`:
+- `CSV-Files\` und Excel-Report von ADRecon
+- `Zusammenfassung.txt` (Benutzerzahlen, inaktive Konten, Mitglieder privilegierter Gruppen)
+- `Inaktive-Benutzer.csv`, `Privilegierte-Gruppen.csv`
+- `Audit-Protokoll.txt`
+
+Der Report-Ordner ist nur für Administratoren, SYSTEM und den ausführenden Benutzer lesbar.
+
+**Virenscanner:** Sophos/Defender melden ADRecon häufig als Hacktool. Ausnahme vorher mit dem Kunden bzw. SOC abstimmen.
+
+---
+
+## Original-README
+
 # ADRecon: Active Directory Recon [![Follow ADRecon on Twitter](https://img.shields.io/twitter/follow/ad_recon.svg?style=social&label=Follow%20%40ad_recon)](https://twitter.com/intent/user?screen_name=ad_recon "Follow ADRecon on Twitter")
 
 This [repo](https://github.com/adrecon/ADRecon) contains updates to the original [concept and code](https://github.com/sense-of-security/adrecon) by Prashant Mahajan (@prashant3535) while working at [Sense of Security](https://senseofsecurity.com.au).

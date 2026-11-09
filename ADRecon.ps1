@@ -40,6 +40,14 @@
 
 .NOTES
 
+    Modified version (fork ichabot/ADRecon, 2026-11) of ADRecon v1.27 by Prashant Mahajan.
+    Changes: see CHANGELOG-FORK.md. Summary:
+      - Computers: IPv4 lookup moved out of the ADWS enumeration (fixes "Invalid enumeration context"), optional -SkipDNSResolve
+      - Users/Computers: new column "Inactive (> n days)" incl. never logged on accounts, optional -PreciseLastLogon (lastLogon of all DCs)
+      - CSV: UTF-8 with BOM, optional -CsvDelimiter ';'
+      - Default collection no longer includes LAPS passwords and BitLocker recovery keys
+      - Simple Excel report via ImportExcel module when Microsoft Excel is not installed
+
     The following commands can be used to turn off ExecutionPolicy: (Requires Admin Privs)
 
     PS > $ExecPolicy = Get-ExecutionPolicy
@@ -77,7 +85,7 @@
 	Path for ADRecon output folder to save the files and the ADRecon-Report.xlsx. (The folder specified will be created if it doesn't exist)
 
 .PARAMETER Collect
-    Which modules to run; Comma separated; e.g Forest,Domain (Default all except Kerberoast, DomainAccountsusedforServiceLogon)
+    Which modules to run; Comma separated; e.g Forest,Domain (Default all except ACLs, Kerberoast, DomainAccountsusedforServiceLogon, LAPS and BitLocker)
     Valid values include: Forest, Domain, Trusts, Sites, Subnets, SchemaHistory, PasswordPolicy, FineGrainedPasswordPolicy, DomainControllers, Users, UserSPNs, PasswordAttributes, Groups, GroupChanges, GroupMembers, OUs, GPOs, gPLinks, DNSZones, DNSRecords, Printers, Computers, ComputerSPNs, LAPS, BitLocker, ACLs, GPOReport, Kerberoast, DomainAccountsusedforServiceLogon.
 
 .PARAMETER OutputType
@@ -98,6 +106,16 @@
 
 .PARAMETER OnlyEnabled
     Only collect details for enabled objects. (Default $false)
+
+.PARAMETER SkipDNSResolve
+    Do not resolve the IPv4 address of computer objects via DNS. (Default $false)
+
+.PARAMETER PreciseLastLogon
+    Query the non-replicated lastLogon attribute on every Domain Controller and use the newest value
+    for the inactivity check of users and computers. (Default $false)
+
+.PARAMETER CsvDelimiter
+    Delimiter for the CSV files. Use ';' for German/European Excel. (Default ',')
 
 .PARAMETER Log
     Create ADRecon Log using Start-Transcript
@@ -237,7 +255,7 @@ param
     [Parameter(Mandatory = $false, HelpMessage = "Path for ADRecon output folder to save the CSV/XML/JSON/HTML files and the ADRecon-Report.xlsx. (The folder specified will be created if it doesn't exist)")]
     [string] $OutputDir,
 
-    [Parameter(Mandatory = $false, HelpMessage = "Which modules to run; Comma separated; e.g Forest,Domain (Default all except ACLs, Kerberoast and DomainAccountsusedforServiceLogon) Valid values include: Forest, Domain, Trusts, Sites, Subnets, SchemaHistory, PasswordPolicy, FineGrainedPasswordPolicy, DomainControllers, Users, UserSPNs, PasswordAttributes, Groups, GroupChanges, GroupMembers, OUs, GPOs, gPLinks, DNSZones, DNSRecords, Printers, Computers, ComputerSPNs, LAPS, BitLocker, ACLs, GPOReport, Kerberoast, DomainAccountsusedforServiceLogon")]
+    [Parameter(Mandatory = $false, HelpMessage = "Which modules to run; Comma separated; e.g Forest,Domain (Default all except ACLs, Kerberoast, DomainAccountsusedforServiceLogon, LAPS and BitLocker) Valid values include: Forest, Domain, Trusts, Sites, Subnets, SchemaHistory, PasswordPolicy, FineGrainedPasswordPolicy, DomainControllers, Users, UserSPNs, PasswordAttributes, Groups, GroupChanges, GroupMembers, OUs, GPOs, gPLinks, DNSZones, DNSRecords, Printers, Computers, ComputerSPNs, LAPS, BitLocker, ACLs, GPOReport, Kerberoast, DomainAccountsusedforServiceLogon")]
     [ValidateSet('Forest', 'Domain', 'Trusts', 'Sites', 'Subnets', 'SchemaHistory', 'PasswordPolicy', 'FineGrainedPasswordPolicy', 'DomainControllers', 'Users', 'UserSPNs', 'PasswordAttributes', 'Groups', 'GroupChanges', 'GroupMembers', 'OUs', 'GPOs', 'gPLinks', 'DNSZones', 'DNSRecords', 'Printers', 'Computers', 'ComputerSPNs', 'LAPS', 'BitLocker', 'ACLs', 'GPOReport', 'Kerberoast', 'DomainAccountsusedforServiceLogon', 'Default')]
     [array] $Collect = 'Default',
 
@@ -263,6 +281,16 @@ param
 
     [Parameter(Mandatory = $false, HelpMessage = "Only collect details for enabled objects. Default `$false")]
     [bool] $OnlyEnabled = $false,
+
+    [Parameter(Mandatory = $false, HelpMessage = "Do not resolve the IPv4 address of computer objects via DNS.")]
+    [switch] $SkipDNSResolve,
+
+    [Parameter(Mandatory = $false, HelpMessage = "Query lastLogon on every Domain Controller for exact inactivity values.")]
+    [switch] $PreciseLastLogon,
+
+    [Parameter(Mandatory = $false, HelpMessage = "Delimiter for the CSV files. Default ','")]
+    [ValidateSet(',', ';')]
+    [string] $CsvDelimiter = ',',
 
     [Parameter(Mandatory = $false, HelpMessage = "Create ADRecon Log using Start-Transcript.")]
     [switch] $Log,
@@ -365,6 +393,31 @@ namespace ADRecon
                 CleanedString = CleanedString.Replace(Replacement, Replacements[Replacement]);
             }
             return CleanedString;
+        }
+
+        public static bool ResolveIPv4 = true;
+
+        public static string ResolveIPv4Address(Object HostName)
+        {
+            string Name = Convert.ToString(HostName);
+            if (String.IsNullOrEmpty(Name))
+            {
+                return null;
+            }
+            try
+            {
+                foreach (System.Net.IPAddress Address in System.Net.Dns.GetHostAddresses(Name))
+                {
+                    if (Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+                    {
+                        return Address.ToString();
+                    }
+                }
+            }
+            catch
+            {
+            }
+            return null;
         }
 
         public static int ObjectCount(Object[] ADRObject)
@@ -1542,7 +1595,16 @@ namespace ADRecon
                     ComputerObj.Members.Add(new PSNoteProperty("Name", CleanString(AdComputer.Members["Name"].Value)));
                     ComputerObj.Members.Add(new PSNoteProperty("DNSHostName", AdComputer.Members["DNSHostName"].Value));
                     ComputerObj.Members.Add(new PSNoteProperty("Enabled", AdComputer.Members["Enabled"].Value));
-                    ComputerObj.Members.Add(new PSNoteProperty("IPv4Address", AdComputer.Members["IPv4Address"].Value));
+                    Object IPv4Address = null;
+                    if (AdComputer.Members["IPv4Address"] != null && AdComputer.Members["IPv4Address"].Value != null)
+                    {
+                        IPv4Address = AdComputer.Members["IPv4Address"].Value;
+                    }
+                    else if (ADWSClass.ResolveIPv4)
+                    {
+                        IPv4Address = ADWSClass.ResolveIPv4Address(AdComputer.Members["DNSHostName"].Value);
+                    }
+                    ComputerObj.Members.Add(new PSNoteProperty("IPv4Address", IPv4Address));
                     ComputerObj.Members.Add(new PSNoteProperty("Operating System", OperatingSystem));
                     ComputerObj.Members.Add(new PSNoteProperty("Logon Age (days)", DaysSinceLastLogon));
                     ComputerObj.Members.Add(new PSNoteProperty("Password Age (days)", DaysSinceLastPasswordChange));
@@ -1990,6 +2052,31 @@ namespace ADRecon
                 CleanedString = CleanedString.Replace(Replacement, Replacements[Replacement]);
             }
             return CleanedString;
+        }
+
+        public static bool ResolveIPv4 = true;
+
+        public static string ResolveIPv4Address(Object HostName)
+        {
+            string Name = Convert.ToString(HostName);
+            if (String.IsNullOrEmpty(Name))
+            {
+                return null;
+            }
+            try
+            {
+                foreach (System.Net.IPAddress Address in System.Net.Dns.GetHostAddresses(Name))
+                {
+                    if (Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+                    {
+                        return Address.ToString();
+                    }
+                }
+            }
+            catch
+            {
+            }
+            return null;
         }
 
         public static int ObjectCount(Object[] ADRObject)
@@ -3203,16 +3290,9 @@ namespace ADRecon
                     DateTime? LastLogonDate = null;
                     DateTime? PasswordLastSet = null;
 
-                    if (AdComputer.Properties["dnshostname"].Count != 0)
+                    if (LDAPClass.ResolveIPv4 && AdComputer.Properties["dnshostname"].Count != 0)
                     {
-                        try
-                        {
-                            StrIPAddress = Convert.ToString(Dns.GetHostEntry(Convert.ToString(AdComputer.Properties["dnshostname"][0])).AddressList[0]);
-                        }
-                        catch
-                        {
-                            StrIPAddress = null;
-                        }
+                        StrIPAddress = LDAPClass.ResolveIPv4Address(AdComputer.Properties["dnshostname"][0]);
                     }
                     // When the user is not allowed to query the UserAccountControl attribute.
                     if (AdComputer.Properties["useraccountcontrol"].Count != 0)
@@ -4189,12 +4269,385 @@ Function Export-ADRCSV
 
     Try
     {
-        $ADRObj | Export-Csv -Path $ADFileName -NoTypeInformation -Encoding Default
+        # UTF-8 with BOM so Excel shows umlauts correctly (PS 5.1: UTF8 = with BOM, PS 7: utf8BOM)
+        If ($PSVersionTable.PSVersion.Major -ge 6)
+        {
+            $ADRCsvEncoding = 'utf8BOM'
+        }
+        Else
+        {
+            $ADRCsvEncoding = 'UTF8'
+        }
+        $ADRDelimiter = ','
+        If ($script:ADRCsvDelimiter)
+        {
+            $ADRDelimiter = $script:ADRCsvDelimiter
+        }
+        $ADRObj | Export-Csv -Path $ADFileName -NoTypeInformation -Encoding $ADRCsvEncoding -Delimiter $ADRDelimiter
     }
     Catch
     {
         Write-Warning "[Export-ADRCSV] Failed to export $($ADFileName)."
         Write-Verbose "[EXCEPTION] $($_.Exception.Message)"
+    }
+}
+
+Function Get-ADRCsvDelimiter
+{
+<#
+.SYNOPSIS
+    Detects the delimiter (',' or ';') of a CSV file created by ADRecon.
+
+.PARAMETER Path
+    [string]
+    Path of the CSV file.
+
+.OUTPUTS
+    [string] ',' or ';'
+#>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $Path
+    )
+
+    Try
+    {
+        $FirstLine = Get-Content -Path $Path -TotalCount 1 -ErrorAction Stop
+        If ($FirstLine)
+        {
+            If ($FirstLine.Contains('";"'))
+            {
+                Return ';'
+            }
+            If ($FirstLine.Contains('","'))
+            {
+                Return ','
+            }
+            If ($FirstLine.Split(';').Count -gt $FirstLine.Split(',').Count)
+            {
+                Return ';'
+            }
+        }
+    }
+    Catch
+    {
+        Write-Verbose "[Get-ADRCsvDelimiter] $($_.Exception.Message)"
+    }
+    Return ','
+}
+
+Function Add-ADRInactivity
+{
+<#
+.SYNOPSIS
+    Adds an inactivity column (and optionally exact lastLogon values of all Domain Controllers) to User or Computer objects.
+
+.DESCRIPTION
+    "Inactive (> n days)" is $true when the newest known logon is older than DormantTimeSpan,
+    or when the account never logged on and was created more than DormantTimeSpan days ago.
+    With -PreciseLastLogon the non-replicated attribute lastLogon is read from every Domain Controller
+    (one query per DC) and the newest value of lastLogon/lastLogonTimestamp is used.
+
+.PARAMETER ADRObj
+    [PSObject[]]
+    Output of the User or Computer parser.
+
+.PARAMETER ObjectType
+    [string]
+    User or Computer.
+
+.OUTPUTS
+    PSObject[] with additional columns.
+#>
+    param(
+        [Parameter(Mandatory = $true)]
+        [Object[]] $ADRObj,
+
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('User', 'Computer')]
+        [string] $ObjectType,
+
+        [Parameter(Mandatory = $true)]
+        [string] $Method,
+
+        [Parameter(Mandatory = $true)]
+        [DateTime] $date,
+
+        [Parameter(Mandatory = $true)]
+        [int] $DormantTimeSpan,
+
+        [Parameter(Mandatory = $false)]
+        [bool] $PreciseLastLogon = $false,
+
+        [Parameter(Mandatory = $false)]
+        [DirectoryServices.DirectoryEntry] $objDomain,
+
+        [Parameter(Mandatory = $false)]
+        [int] $PageSize = 200,
+
+        [Parameter(Mandatory = $false)]
+        [Management.Automation.PSCredential] $Credential = [Management.Automation.PSCredential]::Empty
+    )
+
+    If ($ObjectType -eq 'User')
+    {
+        $SamAccountType = '805306368'
+    }
+    Else
+    {
+        $SamAccountType = '805306369'
+    }
+
+    $LastLogonTable = @{}
+    $DCsQueried = 0
+    $DCsFailed = 0
+    If ($PreciseLastLogon)
+    {
+        Write-Host "[-] $($ObjectType)s - lastLogon from all Domain Controllers"
+        $DCNames = @()
+        Try
+        {
+            If ($Method -eq 'ADWS')
+            {
+                # same as Get-ADRDomainController: alternate credentials come from the ADR: PSDrive
+                $DCNames = @( Get-ADDomainController -Filter * -ErrorAction Stop | ForEach-Object { $_.HostName } )
+            }
+            Else
+            {
+                If ($Credential -ne [Management.Automation.PSCredential]::Empty)
+                {
+                    $DomainFQDN = Get-DNtoFQDN($objDomain.distinguishedName)
+                    $DomainContext = New-Object System.DirectoryServices.ActiveDirectory.DirectoryContext("Domain",$($DomainFQDN),$($Credential.UserName),$($Credential.GetNetworkCredential().password))
+                    $ADDomain = [System.DirectoryServices.ActiveDirectory.Domain]::GetDomain($DomainContext)
+                    Remove-Variable DomainContext
+                }
+                Else
+                {
+                    $ADDomain = [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain()
+                }
+                $DCNames = @( $ADDomain.DomainControllers | ForEach-Object { $_.Name } )
+            }
+        }
+        Catch
+        {
+            Write-Warning "[Add-ADRInactivity] Error while enumerating Domain Controllers, lastLogon not collected"
+            Write-Verbose "[EXCEPTION] $($_.Exception.Message)"
+            $DCNames = @()
+        }
+
+        ForEach ($DCName in $DCNames)
+        {
+            Try
+            {
+                $LogonObjects = @()
+                If ($Method -eq 'ADWS')
+                {
+                    If ($Credential -ne [Management.Automation.PSCredential]::Empty)
+                    {
+                        $LogonObjects = @( Get-ADObject -LDAPFilter "(samAccountType=$SamAccountType)" -Server $DCName -Credential $Credential -ResultPageSize $PageSize -Properties sAMAccountName,lastLogon -ErrorAction Stop | ForEach-Object { [PSCustomObject] @{ Name = $_.sAMAccountName; LastLogon = $_.lastLogon } } )
+                    }
+                    Else
+                    {
+                        $LogonObjects = @( Get-ADObject -LDAPFilter "(samAccountType=$SamAccountType)" -Server $DCName -ResultPageSize $PageSize -Properties sAMAccountName,lastLogon -ErrorAction Stop | ForEach-Object { [PSCustomObject] @{ Name = $_.sAMAccountName; LastLogon = $_.lastLogon } } )
+                    }
+                }
+                Else
+                {
+                    If ($Credential -ne [Management.Automation.PSCredential]::Empty)
+                    {
+                        $DCEntry = New-Object System.DirectoryServices.DirectoryEntry "LDAP://$($DCName)/$($objDomain.distinguishedName)", $Credential.UserName, $Credential.GetNetworkCredential().Password
+                    }
+                    Else
+                    {
+                        $DCEntry = New-Object System.DirectoryServices.DirectoryEntry "LDAP://$($DCName)/$($objDomain.distinguishedName)"
+                    }
+                    $DCSearcher = New-Object System.DirectoryServices.DirectorySearcher $DCEntry
+                    $DCSearcher.PageSize = $PageSize
+                    $DCSearcher.Filter = "(samAccountType=$SamAccountType)"
+                    $DCSearcher.PropertiesToLoad.AddRange(("samaccountname","lastlogon"))
+                    $DCSearcher.SearchScope = "Subtree"
+                    $DCResults = $DCSearcher.FindAll()
+                    $LogonObjects = @( $DCResults | ForEach-Object {
+                        $Value = $null
+                        If ($_.Properties["lastlogon"].Count -ne 0)
+                        {
+                            $Value = [Int64] $_.Properties["lastlogon"][0]
+                        }
+                        [PSCustomObject] @{ Name = [string] $_.Properties["samaccountname"][0]; LastLogon = $Value }
+                    } )
+                    $DCResults.Dispose()
+                    $DCSearcher.Dispose()
+                    $DCEntry.Dispose()
+                }
+
+                ForEach ($LogonObject in $LogonObjects)
+                {
+                    If ($LogonObject.LastLogon -and ([Int64] $LogonObject.LastLogon -gt 0) -and $LogonObject.Name)
+                    {
+                        $Key = ([string] $LogonObject.Name).ToLower()
+                        $Value = [DateTime]::FromFileTime([Int64] $LogonObject.LastLogon)
+                        If ((-Not $LastLogonTable.ContainsKey($Key)) -or ($LastLogonTable[$Key] -lt $Value))
+                        {
+                            $LastLogonTable[$Key] = $Value
+                        }
+                    }
+                }
+                $DCsQueried++
+                Remove-Variable LogonObjects
+            }
+            Catch
+            {
+                $DCsFailed++
+                Write-Warning "[Add-ADRInactivity] Could not query lastLogon on $DCName"
+                Write-Verbose "[EXCEPTION] $($_.Exception.Message)"
+            }
+        }
+        If ($DCsFailed -gt 0)
+        {
+            Write-Warning "[Add-ADRInactivity] lastLogon from $DCsFailed Domain Controller(s) is missing, values may be too old."
+        }
+    }
+
+    $InactiveColumn = "Inactive (> $DormantTimeSpan days)"
+    ForEach ($Obj in $ADRObj)
+    {
+        $Newest = $null
+        If ($Obj."Last Logon Date")
+        {
+            Try
+            {
+                $Newest = [DateTime] $Obj."Last Logon Date"
+            }
+            Catch
+            {
+                $Newest = $null
+            }
+        }
+        If ($PreciseLastLogon -and ($DCsQueried -gt 0))
+        {
+            $Key = ([string] $Obj.UserName).ToLower()
+            If ($LastLogonTable.ContainsKey($Key))
+            {
+                If ((-Not $Newest) -or ($LastLogonTable[$Key] -gt $Newest))
+                {
+                    $Newest = $LastLogonTable[$Key]
+                }
+            }
+            If ($Newest)
+            {
+                $Obj | Add-Member -MemberType NoteProperty -Name "Last Logon (all DCs)" -Value $Newest -Force
+                $Obj | Add-Member -MemberType NoteProperty -Name "Logon Age all DCs (days)" -Value ([Math]::Abs(($date - $Newest).Days)) -Force
+            }
+            Else
+            {
+                $Obj | Add-Member -MemberType NoteProperty -Name "Last Logon (all DCs)" -Value $null -Force
+                $Obj | Add-Member -MemberType NoteProperty -Name "Logon Age all DCs (days)" -Value $null -Force
+            }
+        }
+
+        If ($Newest)
+        {
+            $Inactive = (($date - $Newest).Days -gt $DormantTimeSpan)
+        }
+        Else
+        {
+            # never logged on: only inactive if the account is older than the timespan
+            $Inactive = $true
+            If ($Obj.whenCreated)
+            {
+                Try
+                {
+                    $Inactive = (($date - [DateTime] $Obj.whenCreated).Days -gt $DormantTimeSpan)
+                }
+                Catch
+                {
+                    $Inactive = $true
+                }
+            }
+        }
+        $Obj | Add-Member -MemberType NoteProperty -Name $InactiveColumn -Value $Inactive -Force
+    }
+    Return ,$ADRObj
+}
+
+Function Export-ADRExcelSimple
+{
+<#
+.SYNOPSIS
+    Creates a simple Excel workbook (one worksheet per CSV file) with the ImportExcel module.
+
+.DESCRIPTION
+    Used when Microsoft Excel is not installed. No pivot tables or charts, but filter, frozen header row and auto column width.
+    Install the module with: Install-Module ImportExcel -Scope CurrentUser
+
+.PARAMETER ExcelPath
+    [string]
+    Path for ADRecon output folder containing the CSV-Files folder.
+
+.OUTPUTS
+    ADRecon-Report-Simple.xlsx in the output folder.
+#>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $ExcelPath
+    )
+
+    If (-Not (Get-Module -ListAvailable -Name ImportExcel))
+    {
+        Write-Warning "[Export-ADRExcelSimple] Module ImportExcel not found. Install it with: Install-Module ImportExcel -Scope CurrentUser"
+        Return $null
+    }
+    Try
+    {
+        Import-Module ImportExcel -ErrorAction Stop
+    }
+    Catch
+    {
+        Write-Warning "[Export-ADRExcelSimple] Could not load module ImportExcel"
+        Write-Verbose "[EXCEPTION] $($_.Exception.Message)"
+        Return $null
+    }
+
+    $ReportPath = Join-Path -Path $ExcelPath -ChildPath 'CSV-Files'
+    If (-Not (Test-Path $ReportPath))
+    {
+        Write-Warning "[Export-ADRExcelSimple] Could not locate the CSV-Files directory"
+        Return $null
+    }
+    $XlsxFile = Join-Path -Path $ExcelPath -ChildPath 'ADRecon-Report-Simple.xlsx'
+    If (Test-Path $XlsxFile)
+    {
+        Remove-Item -Path $XlsxFile -Force
+    }
+
+    $Order = @('AboutADRecon','Forest','Domain','DomainControllers','DefaultPasswordPolicy','FineGrainedPasswordPolicy','Users','Groups','GroupMembers','GroupChanges','Computers','OUs','GPOs','gPLinks','UserSPNs','ComputerSPNs','Trusts','Sites','Subnets','SchemaHistory','DNSZones','DNSNodes','Printers','LAPS','BitLockerRecoveryKeys','DACLs','SACLs','Kerberoast','DomainAccountsusedforServiceLogon','PasswordAttributes')
+    $CsvFiles = @( Get-ChildItem -Path $ReportPath -Filter '*.csv' | Sort-Object { $Index = [Array]::IndexOf($Order, $_.BaseName); If ($Index -lt 0) { 999 } Else { $Index } }, Name )
+
+    Write-Output "[*] Generating ADRecon-Report-Simple.xlsx (ImportExcel)"
+    ForEach ($CsvFile in $CsvFiles)
+    {
+        Try
+        {
+            $Data = @( Import-Csv -Path $CsvFile.FullName -Delimiter (Get-ADRCsvDelimiter -Path $CsvFile.FullName) )
+            If ($Data.Count -gt 0)
+            {
+                $SheetName = $CsvFile.BaseName
+                If ($SheetName.Length -gt 31)
+                {
+                    $SheetName = $SheetName.Substring(0, 31)
+                }
+                $Data | Export-Excel -Path $XlsxFile -WorksheetName $SheetName -AutoSize -AutoFilter -FreezeTopRow -BoldTopRow
+            }
+        }
+        Catch
+        {
+            Write-Warning "[Export-ADRExcelSimple] Error while adding $($CsvFile.Name)"
+            Write-Verbose "[EXCEPTION] $($_.Exception.Message)"
+        }
+    }
+    If (Test-Path $XlsxFile)
+    {
+        Write-Output "[+] Excelsheet Saved to: $XlsxFile"
     }
 }
 
@@ -4619,7 +5072,14 @@ Function Get-ADRExcelImport
 
             #65001: Unicode (UTF-8)
             $worksheet.QueryTables.item($Connector.name).TextFilePlatform = 65001
-            $worksheet.QueryTables.item($Connector.name).TextFileCommaDelimiter = $True
+            If ((Get-ADRCsvDelimiter -Path $ADFileName) -eq ';')
+            {
+                $worksheet.QueryTables.item($Connector.name).TextFileSemicolonDelimiter = $True
+            }
+            Else
+            {
+                $worksheet.QueryTables.item($Connector.name).TextFileCommaDelimiter = $True
+            }
             $worksheet.QueryTables.item($Connector.name).TextFileParseType = 1
             $worksheet.QueryTables.item($Connector.name).Refresh() | Out-Null
             $worksheet.QueryTables.item($Connector.name).delete()
@@ -4640,7 +5100,7 @@ Function Get-ADRExcelImport
         $worksheet = $workbook.Worksheets.Item(1)
         If (Test-Path $ADFileName)
         {
-            $ADTemp = Import-Csv -Path $ADFileName
+            $ADTemp = Import-Csv -Path $ADFileName -Delimiter (Get-ADRCsvDelimiter -Path $ADFileName)
             $ADTemp | ForEach-Object {
                 Foreach ($prop in $_.PSObject.Properties)
                 {
@@ -4666,7 +5126,7 @@ Function Get-ADRExcelImport
         $worksheet = $workbook.Worksheets.Item(1)
         If (Test-Path $ADFileName)
         {
-            $CsvData = Import-Csv -Path $ADFileName
+            $CsvData = Import-Csv -Path $ADFileName -Delimiter (Get-ADRCsvDelimiter -Path $ADFileName)
 
             $row_output = $row
             $CsvData[0].PsObject.Properties.Name | ForEach {
@@ -5276,11 +5736,17 @@ Function Export-ADRExcel
         If ($PSVersionTable.Platform -eq "Win32NT")
         {
             $returndir = Get-Location
-            Set-Location C:\Windows\assembly\
-            $refFolder = (Get-ChildItem -Recurse  Microsoft.Office.Interop.Excel.dll).Directory
-            Set-Location $refFolder
-            Add-Type -AssemblyName "Microsoft.Office.Interop.Excel"
-            Set-Location $returndir
+            $refFolder = (Get-ChildItem -Path C:\Windows\assembly\ -Recurse -Filter Microsoft.Office.Interop.Excel.dll -ErrorAction SilentlyContinue | Select-Object -First 1).Directory
+            If ($refFolder)
+            {
+                Set-Location $refFolder
+                Add-Type -AssemblyName "Microsoft.Office.Interop.Excel"
+                Set-Location $returndir
+            }
+            Else
+            {
+                Write-Warning "[Export-ADRExcel] Microsoft.Office.Interop.Excel not found."
+            }
             Remove-Variable returndir
             Remove-Variable refFolder
         }
@@ -6058,6 +6524,10 @@ Function Export-ADRExcel
         Remove-Variable -Name workbook -Scope Global
         Get-ADRExcelComObjRelease -ComObjtoRelease $excel -Final $true
         Remove-Variable -Name excel -Scope Global
+    }
+    Else
+    {
+        Export-ADRExcelSimple -ExcelPath $ExcelPath
     }
 }
 
@@ -8052,7 +8522,13 @@ Function Get-ADRUser
         [int] $ADRUserSPNs = $false,
 
         [Parameter(Mandatory = $false)]
-        [int] $OnlyEnabled = $false
+        [int] $OnlyEnabled = $false,
+
+        [Parameter(Mandatory = $false)]
+        [bool] $PreciseLastLogon = $false,
+
+        [Parameter(Mandatory = $false)]
+        [Management.Automation.PSCredential] $Credential = [Management.Automation.PSCredential]::Empty
     )
 
     If ($Method -eq 'ADWS')
@@ -8204,6 +8680,7 @@ Function Get-ADRUser
 
     If ($UserObj)
     {
+        $UserObj = Add-ADRInactivity -ADRObj $UserObj -ObjectType User -Method $Method -date $date -DormantTimeSpan $DormantTimeSpan -PreciseLastLogon $PreciseLastLogon -objDomain $objDomain -PageSize $PageSize -Credential $Credential
         Export-ADR -ADRObj $UserObj -ADROutputDir $ADROutputDir -OutputType $OutputType -ADRModuleName "Users"
         Remove-Variable UserObj
     }
@@ -9918,7 +10395,13 @@ Function Get-ADRComputer
         [int] $ADRComputerSPNs = $false,
 
         [Parameter(Mandatory = $false)]
-        [int] $OnlyEnabled = $false
+        [int] $OnlyEnabled = $false,
+
+        [Parameter(Mandatory = $false)]
+        [bool] $PreciseLastLogon = $false,
+
+        [Parameter(Mandatory = $false)]
+        [Management.Automation.PSCredential] $Credential = [Management.Automation.PSCredential]::Empty
     )
 
     If ($Method -eq 'ADWS')
@@ -9949,11 +10432,11 @@ Function Get-ADRComputer
             {
                 If ($OnlyEnabled)
                 {
-                    $ADComputers = @( Get-ADComputer -Filter 'enabled -eq $true' -ResultPageSize $PageSize -Properties Description,DistinguishedName,DNSHostName,Enabled,IPv4Address,LastLogonDate,'msDS-AllowedToDelegateTo','ms-ds-CreatorSid','msDS-SupportedEncryptionTypes',Name,OperatingSystem,OperatingSystemHotfix,OperatingSystemServicePack,OperatingSystemVersion,PasswordLastSet,primaryGroupID,SamAccountName,servicePrincipalName,SID,SIDHistory,TrustedForDelegation,TrustedToAuthForDelegation,UserAccountControl,whenChanged,whenCreated )
+                    $ADComputers = @( Get-ADComputer -Filter 'enabled -eq $true' -ResultPageSize $PageSize -Properties Description,DistinguishedName,DNSHostName,Enabled,LastLogonDate,'msDS-AllowedToDelegateTo','ms-ds-CreatorSid','msDS-SupportedEncryptionTypes',Name,OperatingSystem,OperatingSystemHotfix,OperatingSystemServicePack,OperatingSystemVersion,PasswordLastSet,primaryGroupID,SamAccountName,servicePrincipalName,SID,SIDHistory,TrustedForDelegation,TrustedToAuthForDelegation,UserAccountControl,whenChanged,whenCreated )
                 }
                 Else
                 {
-                    $ADComputers = @( Get-ADComputer -Filter * -ResultPageSize $PageSize -Properties Description,DistinguishedName,DNSHostName,Enabled,IPv4Address,LastLogonDate,'msDS-AllowedToDelegateTo','ms-ds-CreatorSid','msDS-SupportedEncryptionTypes',Name,OperatingSystem,OperatingSystemHotfix,OperatingSystemServicePack,OperatingSystemVersion,PasswordLastSet,primaryGroupID,SamAccountName,servicePrincipalName,SID,SIDHistory,TrustedForDelegation,TrustedToAuthForDelegation,UserAccountControl,whenChanged,whenCreated )
+                    $ADComputers = @( Get-ADComputer -Filter * -ResultPageSize $PageSize -Properties Description,DistinguishedName,DNSHostName,Enabled,LastLogonDate,'msDS-AllowedToDelegateTo','ms-ds-CreatorSid','msDS-SupportedEncryptionTypes',Name,OperatingSystem,OperatingSystemHotfix,OperatingSystemServicePack,OperatingSystemVersion,PasswordLastSet,primaryGroupID,SamAccountName,servicePrincipalName,SID,SIDHistory,TrustedForDelegation,TrustedToAuthForDelegation,UserAccountControl,whenChanged,whenCreated )
                 }
             }
             Catch
@@ -10051,6 +10534,7 @@ Function Get-ADRComputer
 
     If ($ComputerObj)
     {
+        $ComputerObj = Add-ADRInactivity -ADRObj $ComputerObj -ObjectType Computer -Method $Method -date $date -DormantTimeSpan $DormantTimeSpan -PreciseLastLogon $PreciseLastLogon -objDomain $objDomain -PageSize $PageSize -Credential $Credential
         Export-ADR -ADRObj $ComputerObj -ADROutputDir $ADROutputDir -OutputType $OutputType -ADRModuleName "Computers"
         Remove-Variable ComputerObj
     }
@@ -12225,6 +12709,16 @@ Function Invoke-ADRecon
         [bool] $UseAltCreds = $false,
 
         [Parameter(Mandatory = $false)]
+        [bool] $SkipDNSResolve = $false,
+
+        [Parameter(Mandatory = $false)]
+        [bool] $PreciseLastLogon = $false,
+
+        [Parameter(Mandatory = $false)]
+        [ValidateSet(',', ';')]
+        [string] $CsvDelimiter = ',',
+
+        [Parameter(Mandatory = $false)]
         [ValidateSet('ADRecon', 'CyberCX', 'Payatu')]
         [string] $Logo = "ADRecon"
     )
@@ -12238,7 +12732,8 @@ Function Invoke-ADRecon
         }
     }
 
-    [string] $ADReconVersion = "v1.27"
+    [string] $ADReconVersion = "v1.27-fork.1"
+    $script:ADRCsvDelimiter = $CsvDelimiter
     Write-Output "[*] ADRecon $ADReconVersion by Prashant Mahajan (@prashant3535)"
 
     If ($GenExcel)
@@ -12393,6 +12888,7 @@ Function Invoke-ADRecon
                     ([System.Reflection.Assembly]::LoadWithPartialName("System.Net.Primitives")).Location
                     ([System.Reflection.Assembly]::LoadWithPartialName("System.Security.Principal.Windows")).Location
                     ([System.Reflection.Assembly]::LoadWithPartialName("System.IO.FileSystem.AccessControl")).Location
+                    ([System.Reflection.Assembly]::LoadWithPartialName("System.Net.NameResolution")).Location
                     ([System.Reflection.Assembly]::LoadWithPartialName("System.Console")).Location
                     ([System.Reflection.Assembly]::LoadWithPartialName("Microsoft.ActiveDirectory.Management")).Location
                     ([System.Reflection.Assembly]::LoadWithPartialName("System.Management.Automation")).Location
@@ -12603,8 +13099,10 @@ Function Invoke-ADRecon
             $ADRPrinters = $true
             $ADRComputers = $true
             $ADRComputerSPNs = $true
-            $ADRLAPS = $true
-            $ADRBitLocker = $true
+            # LAPS passwords and BitLocker recovery keys are no longer part of the default collection (plain text in the report).
+            # Use -Collect LAPS,BitLocker explicitly when required.
+            #$ADRLAPS = $true
+            #$ADRBitLocker = $true
             #$ADRACLs = $true
             $ADRGPOReport = $true
             #$ADRKerberoast = $true
@@ -12959,7 +13457,7 @@ Function Invoke-ADRecon
         {
             Write-Output "[-] Users and SPNs - May take some time"
         }
-        Get-ADRUser -Method $Method -date $date -objDomain $objDomain -DormantTimeSpan $DormantTimeSpan -PageSize $PageSize -Threads $Threads -ADRUsers $ADRUsers -ADRUserSPNs $ADRUserSPNs -OnlyEnabled $OnlyEnabled
+        Get-ADRUser -Method $Method -date $date -objDomain $objDomain -DormantTimeSpan $DormantTimeSpan -PageSize $PageSize -Threads $Threads -ADRUsers $ADRUsers -ADRUserSPNs $ADRUserSPNs -OnlyEnabled $OnlyEnabled -PreciseLastLogon $PreciseLastLogon -Credential $Credential
         Remove-Variable ADRUsers
         Remove-Variable ADRUserSPNs
     }
@@ -13086,7 +13584,16 @@ Function Invoke-ADRecon
             Write-Output "[-] Computers and SPNs - May take some time"
         }
 
-        Get-ADRComputer -Method $Method -date $date -objDomain $objDomain -DormantTimeSpan $DormantTimeSpan -PassMaxAge $PassMaxAge -PageSize $PageSize -Threads $Threads -ADRComputers $ADRComputers -ADRComputerSPNs $ADRComputerSPNs -OnlyEnabled $OnlyEnabled
+        If ($Method -eq 'ADWS')
+        {
+            [ADRecon.ADWSClass]::ResolveIPv4 = (-Not $SkipDNSResolve)
+        }
+        Else
+        {
+            [ADRecon.LDAPClass]::ResolveIPv4 = (-Not $SkipDNSResolve)
+        }
+
+        Get-ADRComputer -Method $Method -date $date -objDomain $objDomain -DormantTimeSpan $DormantTimeSpan -PassMaxAge $PassMaxAge -PageSize $PageSize -Threads $Threads -ADRComputers $ADRComputers -ADRComputerSPNs $ADRComputerSPNs -OnlyEnabled $OnlyEnabled -PreciseLastLogon $PreciseLastLogon -Credential $Credential
 
         Remove-Variable ADRComputers
         Remove-Variable ADRComputerSPNs
@@ -13222,7 +13729,7 @@ If ($Log)
     Start-Transcript -Path "$(Get-Location)\ADRecon-Console-Log.txt"
 }
 
-Invoke-ADRecon -GenExcel $GenExcel -Method $Method -Collect $Collect -DomainController $DomainController -Credential $Credential -OutputType $OutputType -ADROutputDir $OutputDir -DormantTimeSpan $DormantTimeSpan -PassMaxAge $PassMaxAge -PageSize $PageSize -Threads $Threads -OnlyEnabled $OnlyEnabled -Logo $Logo
+Invoke-ADRecon -GenExcel $GenExcel -Method $Method -Collect $Collect -DomainController $DomainController -Credential $Credential -OutputType $OutputType -ADROutputDir $OutputDir -DormantTimeSpan $DormantTimeSpan -PassMaxAge $PassMaxAge -PageSize $PageSize -Threads $Threads -OnlyEnabled $OnlyEnabled -Logo $Logo -SkipDNSResolve $SkipDNSResolve.IsPresent -PreciseLastLogon $PreciseLastLogon.IsPresent -CsvDelimiter $CsvDelimiter
 
 If ($Log)
 {
