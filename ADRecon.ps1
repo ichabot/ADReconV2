@@ -4604,6 +4604,7 @@ Function Export-ADRExcelSimple
     Try
     {
         Import-Module ImportExcel -ErrorAction Stop
+        Add-Type -AssemblyName System.Drawing -ErrorAction SilentlyContinue
     }
     Catch
     {
@@ -4901,19 +4902,21 @@ Function Export-ADRExcelSimple
                     @('Aktiviert, aber inaktiv', $InactiveCount),
                     @('Deaktiviert', ($Users.Count - $EnabledUsers.Count))
                 )
-                $Ws.Cells[$Row, 1].Value = 'Benutzerstatus'
-                $Ws.Cells[$Row, 2].Value = 'Anzahl'
-                $Ws.Cells[$Row, 1, $Row, 2].Style.Font.Bold = $true
+                $Ws.Cells["A$Row"].Value = 'Benutzerstatus'
+                $Ws.Cells["B$Row"].Value = 'Anzahl'
+                $Ws.Cells["A$($Row):B$Row"].Style.Font.Bold = $true
                 $First = $Row + 1
                 ForEach ($S in $UserStatus)
                 {
                     $Row++
-                    $Ws.Cells[$Row, 1].Value = $S[0]
-                    $Ws.Cells[$Row, 2].Value = [int] $S[1]
+                    $Ws.Cells["A$Row"].Value = $S[0]
+                    $Ws.Cells["B$Row"].Value = [int] $S[1]
                 }
                 $Chart = $Ws.Drawings.AddChart('BenutzerstatusChart', [OfficeOpenXml.Drawing.Chart.eChartType]::Pie)
                 $Chart.Title.Text = 'Benutzerstatus'
-                $Serie = $Chart.Series.Add($Ws.Cells[$First, 2, $Row, 2], $Ws.Cells[$First, 1, $Row, 1])
+                $YRange = $Ws.Cells["B$($First):B$Row"]
+                $XRange = $Ws.Cells["A$($First):A$Row"]
+                $Serie = $Chart.Series.Add($YRange, $XRange)
                 $Chart.SetPosition(0, 0, 3, 0)
                 $Chart.SetSize(480, 300)
                 $Chart.DataLabel.ShowPercent = $true
@@ -4922,21 +4925,23 @@ Function Export-ADRExcelSimple
             If ($Computers.Count -gt 0)
             {
                 $OsStats = @( $EnabledComps | Group-Object { If ($_.'Operating System') { [string] $_.'Operating System' } Else { '(unbekannt)' } } | Sort-Object Count -Descending )
-                $Ws.Cells[$Row, 1].Value = 'Betriebssystem (aktivierte Computer)'
-                $Ws.Cells[$Row, 2].Value = 'Anzahl'
-                $Ws.Cells[$Row, 1, $Row, 2].Style.Font.Bold = $true
+                $Ws.Cells["A$Row"].Value = 'Betriebssystem (aktivierte Computer)'
+                $Ws.Cells["B$Row"].Value = 'Anzahl'
+                $Ws.Cells["A$($Row):B$Row"].Style.Font.Bold = $true
                 $First = $Row + 1
                 ForEach ($O in $OsStats)
                 {
                     $Row++
-                    $Ws.Cells[$Row, 1].Value = $O.Name
-                    $Ws.Cells[$Row, 2].Value = [int] $O.Count
+                    $Ws.Cells["A$Row"].Value = $O.Name
+                    $Ws.Cells["B$Row"].Value = [int] $O.Count
                 }
                 If ($OsStats.Count -gt 0)
                 {
                     $Chart = $Ws.Drawings.AddChart('BetriebssystemChart', [OfficeOpenXml.Drawing.Chart.eChartType]::BarClustered)
                     $Chart.Title.Text = 'Betriebssysteme (aktivierte Computer)'
-                    $Serie = $Chart.Series.Add($Ws.Cells[$First, 2, $Row, 2], $Ws.Cells[$First, 1, $Row, 1])
+                    $YRange = $Ws.Cells["B$($First):B$Row"]
+                    $XRange = $Ws.Cells["A$($First):A$Row"]
+                    $Serie = $Chart.Series.Add($YRange, $XRange)
                     $Serie.Header = 'Anzahl'
                     $Chart.Legend.Remove()
                     $Chart.SetPosition($First - 2, 0, 3, 0)
