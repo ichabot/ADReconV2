@@ -33,8 +33,10 @@ Lizenz unverändert AGPL-3.0, siehe `LICENSE.md`.
   weil diese im Klartext in CSV/Excel landen. Bei Bedarf explizit mit `-Collect LAPS,BitLocker` abfragen.
 
 ### Excel ohne installiertes Excel
-- Ist kein Excel installiert, aber das Modul **ImportExcel** vorhanden, entsteht `ADRecon-Report-Simple.xlsx`
-  (ein Blatt pro CSV, Filter, fixierte Kopfzeile). Ohne Pivots und Diagramme.
+- Ist kein Excel installiert, aber das Modul **ImportExcel** vorhanden, entsteht `AD-Audit-Report.xlsx`:
+  Übersicht mit Prüfpunkten und Ampel (Prüfen/OK/Info), Blätter für auffällige Konten, privilegierte Gruppen,
+  inaktive Benutzer und Computer, Statistik mit Diagrammen, alle Rohdaten als formatierte Tabellen
+  (kritische Werte rot markiert).
   Modul installieren: `Install-Module ImportExcel -Scope CurrentUser`
 
 ### Repo

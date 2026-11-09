@@ -71,11 +71,26 @@ C:\AD-Audit\Report-20261109-1530\
 ├── Privilegierte-Gruppen.csv    Mitglieder von Domänen-Admins, Administratoren, Schema-/Organisations-Admins usw.
 ├── Audit-Protokoll.txt          komplette Konsolenausgabe
 ├── <Domäne>ADRecon-Report.xlsx  Excel-Report (wenn Excel installiert ist)
-├── ADRecon-Report-Simple.xlsx   vereinfachter Report (ohne Excel, mit Modul ImportExcel)
+├── AD-Audit-Report.xlsx         Audit-Report ohne installiertes Excel (Modul ImportExcel), siehe unten
 └── CSV-Files\                   Rohdaten je Modul (Users, Groups, GroupMembers, Computers, ...)
 ```
 
 Alle CSV-Dateien nutzen Semikolon und UTF-8, sie lassen sich in einem deutschen Excel per Doppelklick öffnen.
+
+### AD-Audit-Report.xlsx
+
+Wird erstellt, wenn auf dem Rechner kein Excel installiert ist (über das Modul ImportExcel):
+
+| Blatt | Inhalt |
+|---|---|
+| **Übersicht** | Domäne, Funktionsebenen, Prüfpunkte mit Status *Prüfen / OK / Info* und kurzem Hinweis |
+| **Auffällige Konten** | ein Eintrag je Befund, z. B. Kennwort läuft nie ab, Kennwort nicht erforderlich, AS-REP Roasting, uneingeschränkte Delegierung |
+| **Privilegierte Gruppen** | Mitglieder mit Status (aktiviert, inaktiv, Kennwort läuft nie ab, Kennwortalter) |
+| **Inaktive Benutzer / Computer** | aktivierte Konten ohne Anmeldung seit n Tagen |
+| **Statistik** | Benutzerstatus und Betriebssysteme mit Diagramm |
+| Rohdaten | alle CSV-Dateien als Tabellen mit Filter, kritische Werte rot markiert |
+
+Mit installiertem Excel entsteht stattdessen der Original-Report von ADRecon mit Pivot-Tabellen.
 
 **Wichtige Spalten in `Users.csv` und `Computers.csv`:**
 

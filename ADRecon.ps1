@@ -46,7 +46,7 @@
       - Users/Computers: new column "Inactive (> n days)" incl. never logged on accounts, optional -PreciseLastLogon (lastLogon of all DCs)
       - CSV: UTF-8 with BOM, optional -CsvDelimiter ';'
       - Default collection no longer includes LAPS passwords and BitLocker recovery keys
-      - Simple Excel report via ImportExcel module when Microsoft Excel is not installed
+      - Excel audit report (overview, findings, charts) via ImportExcel module when Microsoft Excel is not installed
 
     The following commands can be used to turn off ExecutionPolicy: (Requires Admin Privs)
 
@@ -4574,10 +4574,14 @@ Function Export-ADRExcelSimple
 {
 <#
 .SYNOPSIS
-    Creates a simple Excel workbook (one worksheet per CSV file) with the ImportExcel module.
+    Creates an Excel audit report with the ImportExcel module (no Microsoft Excel required).
 
 .DESCRIPTION
-    Used when Microsoft Excel is not installed. No pivot tables or charts, but filter, frozen header row and auto column width.
+    Used when Microsoft Excel is not installed. Creates AD-Audit-Report.xlsx with
+    - Uebersicht: key figures with status (Pruefen/Info) and a short note per check
+    - Inaktive Benutzer, Inaktive Computer, Privilegierte Gruppen, Auffaellige Konten
+    - Statistik: tables and charts (user status, operating systems)
+    - all CSV files as formatted tables with filter
     Install the module with: Install-Module ImportExcel -Scope CurrentUser
 
 .PARAMETER ExcelPath
@@ -4585,7 +4589,7 @@ Function Export-ADRExcelSimple
     Path for ADRecon output folder containing the CSV-Files folder.
 
 .OUTPUTS
-    ADRecon-Report-Simple.xlsx in the output folder.
+    AD-Audit-Report.xlsx in the output folder.
 #>
     param(
         [Parameter(Mandatory = $true)]
@@ -4614,36 +4618,388 @@ Function Export-ADRExcelSimple
         Write-Warning "[Export-ADRExcelSimple] Could not locate the CSV-Files directory"
         Return $null
     }
-    $XlsxFile = Join-Path -Path $ExcelPath -ChildPath 'ADRecon-Report-Simple.xlsx'
+    $XlsxFile = Join-Path -Path $ExcelPath -ChildPath 'AD-Audit-Report.xlsx'
     If (Test-Path $XlsxFile)
     {
         Remove-Item -Path $XlsxFile -Force
     }
+    Write-Output "[*] Generating AD-Audit-Report.xlsx (ImportExcel)"
 
-    $Order = @('AboutADRecon','Forest','Domain','DomainControllers','DefaultPasswordPolicy','FineGrainedPasswordPolicy','Users','Groups','GroupMembers','GroupChanges','Computers','OUs','GPOs','gPLinks','UserSPNs','ComputerSPNs','Trusts','Sites','Subnets','SchemaHistory','DNSZones','DNSNodes','Printers','LAPS','BitLockerRecoveryKeys','DACLs','SACLs','Kerberoast','DomainAccountsusedforServiceLogon','PasswordAttributes')
-    $CsvFiles = @( Get-ChildItem -Path $ReportPath -Filter '*.csv' | Sort-Object { $Index = [Array]::IndexOf($Order, $_.BaseName); If ($Index -lt 0) { 999 } Else { $Index } }, Name )
-
-    Write-Output "[*] Generating ADRecon-Report-Simple.xlsx (ImportExcel)"
-    ForEach ($CsvFile in $CsvFiles)
-    {
-        Try
+    # ------------------------------------------------------------ helpers
+    $ReadCsv = {
+        param([string] $Name)
+        $File = Join-Path -Path $ReportPath -ChildPath "$Name.csv"
+        If (Test-Path $File)
         {
-            $Data = @( Import-Csv -Path $CsvFile.FullName -Delimiter (Get-ADRCsvDelimiter -Path $CsvFile.FullName) )
-            If ($Data.Count -gt 0)
+            Return ,@( Import-Csv -Path $File -Delimiter (Get-ADRCsvDelimiter -Path $File) )
+        }
+        Return ,@()
+    }
+    $IsTrue = {
+        param($Value)
+        Return ([string] $Value -eq 'True')
+    }
+    $FindColumn = {
+        param([Object[]] $Rows, [string] $Prefix)
+        If ($Rows.Count -gt 0)
+        {
+            Return ($Rows[0].PSObject.Properties.Name | Where-Object { $_.StartsWith($Prefix) } | Select-Object -First 1)
+        }
+        Return $null
+    }
+    $NoNumberConversion = @('UserName','Name','Member UserName','Member Name','SID','Member SID','Mobile','IPv4Address','Description','Info','Title','Primary GroupID','Primary Group ID','DNSHostName','Hostname')
+
+    $Users        = & $ReadCsv 'Users'
+    $Computers    = & $ReadCsv 'Computers'
+    $Groups       = & $ReadCsv 'Groups'
+    $GroupMembers = & $ReadCsv 'GroupMembers'
+    $DCs          = & $ReadCsv 'DomainControllers'
+    $DomainInfo   = & $ReadCsv 'Domain'
+    $ForestInfo   = & $ReadCsv 'Forest'
+    $About        = & $ReadCsv 'AboutADRecon'
+    $PwdPolicy    = & $ReadCsv 'DefaultPasswordPolicy'
+
+    $InactiveColUser = & $FindColumn $Users 'Inactive (> '
+    $InactiveColComp = & $FindColumn $Computers 'Inactive (> '
+    $PwdAgeColUser   = & $FindColumn $Users 'Password Age (> '
+    $DormantDays = $null
+    If ($InactiveColUser -and ($InactiveColUser -match '\(> (\d+) days\)'))
+    {
+        $DormantDays = [int] $Matches[1]
+    }
+    $DCNames = @( $DCs | ForEach-Object { ([string] $_.Name).ToLower() } )
+
+    $EnabledUsers = @( $Users | Where-Object { & $IsTrue $_.Enabled } )
+    $EnabledComps = @( $Computers | Where-Object { & $IsTrue $_.Enabled } )
+
+    # ------------------------------------------------------------ privileged groups (by SID, language independent)
+    $PrivRid = @('-512', '-518', '-519', '-548', '-549', '-550', '-551')
+    $PrivSid = @('S-1-5-32-544', 'S-1-5-32-548', 'S-1-5-32-549', 'S-1-5-32-550', 'S-1-5-32-551')
+    $PrivGroupNames = @( $Groups | Where-Object {
+        $Sid = [string] $_.SID
+        ($PrivSid -contains $Sid) -or ($Sid -like 'S-1-5-21-*' -and ($PrivRid | Where-Object { $Sid.EndsWith($_) }))
+    } | ForEach-Object {
+        $_.Name
+        If ([string] $_.DistinguishedName -match '^CN=(.+?),(OU|CN|DC)=') { $Matches[1] -replace '\\,', ',' }
+    } | Sort-Object -Unique )
+    $UserLookup = @{}
+    ForEach ($U in $Users)
+    {
+        If ($U.UserName) { $UserLookup[([string] $U.UserName).ToLower()] = $U }
+    }
+    $PrivMembers = @( $GroupMembers | Where-Object { $PrivGroupNames -contains $_.'Group Name' } | ForEach-Object {
+        $IsGroup = ($_.AccountType -eq 'group') -or ($_.'Member UserName' -eq '-')
+        $Member = $(If ($IsGroup) { "[Gruppe] $($_.'Member Name')" } Else { $_.'Member UserName' })
+        $U = $null
+        If (-not $IsGroup -and $_.'Member UserName') { $U = $UserLookup[([string] $_.'Member UserName').ToLower()] }
+        [PSCustomObject] [ordered] @{
+            'Gruppe'                 = $_.'Group Name'
+            'Mitglied'               = $Member
+            'Name'                   = $_.'Member Name'
+            'Typ'                    = $_.AccountType
+            'Aktiviert'              = $(If ($U) { $U.Enabled } Else { '' })
+            'Inaktiv'                = $(If ($U -and $InactiveColUser) { $U.$InactiveColUser } Else { '' })
+            'Kennwort läuft nie ab' = $(If ($U) { $U.'Password Never Expires' } Else { '' })
+            'Kennwortalter (Tage)'   = $(If ($U) { $U.'Password Age (days)' } Else { '' })
+            'Beschreibung'           = $(If ($U) { $U.Description } Else { '' })
+        }
+    } | Sort-Object Gruppe, Mitglied )
+
+    # ------------------------------------------------------------ findings per account
+    $Findings = New-Object System.Collections.Generic.List[Object]
+    $AddFinding = {
+        param($Obj, [string] $Type, [string] $Finding)
+        $Findings.Add([PSCustomObject] [ordered] @{
+            'Typ'          = $Type
+            'Konto'        = $Obj.UserName
+            'Name'         = $Obj.Name
+            'Befund'       = $Finding
+            'Beschreibung' = $Obj.Description
+            'Pfad'         = $(If ($Obj.DistinguishedName) { $Obj.DistinguishedName } Else { $Obj.'Distinguished Name' })
+        })
+    }
+    ForEach ($U in $EnabledUsers)
+    {
+        If (& $IsTrue $U.'Password Never Expires')         { & $AddFinding $U 'Benutzer' 'Kennwort läuft nie ab' }
+        If (& $IsTrue $U.'Password Not Required')          { & $AddFinding $U 'Benutzer' 'Kennwort nicht erforderlich' }
+        If (& $IsTrue $U.'Does Not Require Pre Auth')      { & $AddFinding $U 'Benutzer' 'Kerberos-Vorauthentifizierung deaktiviert (AS-REP Roasting)' }
+        If (& $IsTrue $U.'Reversible Password Encryption') { & $AddFinding $U 'Benutzer' 'Kennwort mit umkehrbarer Verschlüsselung' }
+        If ($U.'Delegation Type' -eq 'Unconstrained')      { & $AddFinding $U 'Benutzer' 'Uneingeschränkte Kerberos-Delegierung' }
+        If ((& $IsTrue $U.HasSPN) -and ([string] $U.AdminCount -eq '1')) { & $AddFinding $U 'Benutzer' 'Privilegiertes Konto mit SPN (Kerberoasting)' }
+        If (& $IsTrue $U.'Kerberos DES Only')              { & $AddFinding $U 'Benutzer' 'Nur DES für Kerberos' }
+        If ([string] $U.SIDHistory)                        { & $AddFinding $U 'Benutzer' 'SIDHistory gesetzt' }
+    }
+    ForEach ($C in $EnabledComps)
+    {
+        If (($C.'Delegation Type' -eq 'Unconstrained') -and ($DCNames -notcontains ([string] $C.Name).ToLower()))
+        {
+            & $AddFinding $C 'Computer' 'Uneingeschränkte Kerberos-Delegierung (kein DC)'
+        }
+    }
+
+    # ------------------------------------------------------------ overview
+    $Count = { param($Rows) Return @($Rows | Where-Object { $null -ne $_ }).Count }
+    $OldOsPattern = '(Windows 2000|XP|Vista|Windows 7|Windows 8|Windows 10|Server 2003|Server 2008|Server 2012)'
+    $Checks = New-Object System.Collections.Generic.List[Object]
+    $AddCheck = {
+        param([string] $Area, [string] $Check, $Value, [string] $Status, [string] $Note)
+        $Checks.Add([PSCustomObject] [ordered] @{ 'Bereich' = $Area; 'Prüfpunkt' = $Check; 'Wert' = $Value; 'Status' = $Status; 'Hinweis' = $Note })
+    }
+    $Flag = { param($Value) If ([int] $Value -gt 0) { 'Prüfen' } Else { 'OK' } }
+
+    If ($Users.Count -gt 0)
+    {
+        $InactiveUsers = @( $EnabledUsers | Where-Object { $InactiveColUser -and (& $IsTrue $_.$InactiveColUser) } )
+        $NeverUsers    = @( $EnabledUsers | Where-Object { & $IsTrue $_.'Never Logged in' } )
+        $n = & $Count $Users;                                                                        & $AddCheck 'Benutzer' 'Benutzer gesamt' $n 'Info' ''
+        $n = & $Count $EnabledUsers;                                                                 & $AddCheck 'Benutzer' 'davon aktiviert' $n 'Info' ''
+        $n = $Users.Count - $EnabledUsers.Count;                                                     & $AddCheck 'Benutzer' 'davon deaktiviert' $n 'Info' 'Deaktivierte Konten regelmäßig löschen oder archivieren'
+        $n = & $Count $InactiveUsers;                                                                & $AddCheck 'Benutzer' "Aktiviert und inaktiv (> $DormantDays Tage)" $n (& $Flag $n) 'Konten prüfen und deaktivieren, Dienstkonten dokumentieren'
+        $n = & $Count $NeverUsers;                                                                   & $AddCheck 'Benutzer' 'Aktiviert und nie angemeldet' $n (& $Flag $n) 'Oft vergessene Neuanlagen oder Funktionskonten'
+        $n = & $Count ($EnabledUsers | Where-Object { & $IsTrue $_.'Password Never Expires' });       & $AddCheck 'Benutzer' 'Kennwort läuft nie ab' $n (& $Flag $n) 'Nur für Dienstkonten mit langem Kennwort vertretbar, besser gMSA'
+        If ($PwdAgeColUser)
+        {
+            $n = & $Count ($EnabledUsers | Where-Object { & $IsTrue $_.$PwdAgeColUser });           & $AddCheck 'Benutzer' "Kennwort älter als $(($PwdAgeColUser -replace '[^\d]', '')) Tage" $n (& $Flag $n) 'Kennwort seit langem nicht geändert'
+        }
+        $n = & $Count ($EnabledUsers | Where-Object { & $IsTrue $_.'Password Not Required' });        & $AddCheck 'Benutzer' 'Kennwort nicht erforderlich' $n (& $Flag $n) 'Konto kann ein leeres Kennwort haben'
+        $n = & $Count ($EnabledUsers | Where-Object { & $IsTrue $_.'Does Not Require Pre Auth' });    & $AddCheck 'Benutzer' 'Kerberos-Vorauthentifizierung deaktiviert' $n (& $Flag $n) 'Angreifbar über AS-REP Roasting'
+        $n = & $Count ($EnabledUsers | Where-Object { & $IsTrue $_.'Reversible Password Encryption' });& $AddCheck 'Benutzer' 'Umkehrbare Kennwortverschlüsselung' $n (& $Flag $n) 'Kennwort praktisch im Klartext gespeichert'
+        $n = & $Count ($EnabledUsers | Where-Object { $_.'Delegation Type' -eq 'Unconstrained' });   & $AddCheck 'Benutzer' 'Uneingeschränkte Delegierung' $n (& $Flag $n) 'Auf eingeschränkte Delegierung umstellen'
+        $n = & $Count ($EnabledUsers | Where-Object { (& $IsTrue $_.HasSPN) -and ([string] $_.AdminCount -eq '1') }); & $AddCheck 'Benutzer' 'Privilegierte Konten mit SPN' $n (& $Flag $n) 'Angreifbar über Kerberoasting, langes Kennwort oder gMSA'
+        $n = & $Count ($Users | Where-Object { & $IsTrue $_.'Account Locked Out' });                 & $AddCheck 'Benutzer' 'Gesperrte Konten' $n 'Info' ''
+    }
+    If ($Computers.Count -gt 0)
+    {
+        $InactiveComps = @( $EnabledComps | Where-Object { $InactiveColComp -and (& $IsTrue $_.$InactiveColComp) } )
+        $OldOs = @( $EnabledComps | Where-Object { [string] $_.'Operating System' -match $OldOsPattern } )
+        $n = & $Count $Computers;                                                                    & $AddCheck 'Computer' 'Computer gesamt' $n 'Info' ''
+        $n = & $Count $EnabledComps;                                                                 & $AddCheck 'Computer' 'davon aktiviert' $n 'Info' ''
+        $n = & $Count $InactiveComps;                                                                & $AddCheck 'Computer' "Aktiviert und inaktiv (> $DormantDays Tage)" $n (& $Flag $n) 'Vermutlich nicht mehr vorhanden, deaktivieren und später löschen'
+        $n = & $Count $OldOs;                                                                        & $AddCheck 'Computer' 'Betriebssystem ohne Herstellersupport' $n (& $Flag $n) 'Windows 10 und älter, Server 2012 R2 und älter'
+        $n = & $Count ($EnabledComps | Where-Object { ($_.'Delegation Type' -eq 'Unconstrained') -and ($DCNames -notcontains ([string] $_.Name).ToLower()) }); & $AddCheck 'Computer' 'Uneingeschränkte Delegierung (ohne DCs)' $n (& $Flag $n) 'Auf eingeschränkte Delegierung umstellen'
+    }
+    If ($DCs.Count -gt 0)
+    {
+        $n = & $Count $DCs;                                                                          & $AddCheck 'Domain Controller' 'Anzahl Domain Controller' $n $(If ($n -lt 2) { 'Prüfen' } Else { 'OK' }) 'Mindestens zwei DCs für Ausfallsicherheit'
+        $n = & $Count ($DCs | Where-Object { [string] $_.'Operating System' -match $OldOsPattern }); & $AddCheck 'Domain Controller' 'DCs ohne Herstellersupport' $n (& $Flag $n) 'Server 2012 R2 und älter'
+        $n = & $Count ($DCs | Where-Object { & $IsTrue $_.'SMB1(NT LM 0.12)' });                    & $AddCheck 'Domain Controller' 'SMB1 aktiv' $n (& $Flag $n) 'SMB1 deaktivieren'
+        $n = & $Count ($DCs | Where-Object { [string] $_.'SMB Signing' -eq 'False' });              & $AddCheck 'Domain Controller' 'SMB-Signierung nicht erzwungen' $n (& $Flag $n) 'SMB-Signierung per GPO erzwingen'
+    }
+    ForEach ($Row in $PwdPolicy)
+    {
+        $Value = [string] $Row.'Current Value'
+        Switch -Wildcard ($Row.Policy)
+        {
+            'Minimum password length*'     { & $AddCheck 'Kennwortrichtlinie' 'Mindestlänge Kennwort' $Value $(If ($Value -match '^\d+$' -and [int] $Value -lt 12) { 'Prüfen' } Else { 'OK' }) 'Empfehlung mindestens 12 Zeichen' }
+            'Password must meet complex*'  { & $AddCheck 'Kennwortrichtlinie' 'Komplexität erforderlich' $Value $(If ($Value -eq 'False') { 'Prüfen' } Else { 'OK' }) '' }
+            'Account lockout threshold*'   { & $AddCheck 'Kennwortrichtlinie' 'Kontosperrung nach Fehlversuchen' $Value $(If ($Value -eq '0') { 'Prüfen' } Else { 'OK' }) '0 = keine Kontosperrung' }
+            'Store password using revers*' { & $AddCheck 'Kennwortrichtlinie' 'Umkehrbare Verschlüsselung (Domäne)' $Value $(If ($Value -eq 'True') { 'Prüfen' } Else { 'OK' }) '' }
+            'Maximum password age*'        { & $AddCheck 'Kennwortrichtlinie' 'Maximales Kennwortalter (Tage)' $Value 'Info' '' }
+        }
+    }
+    ForEach ($G in ($PrivMembers | Group-Object Gruppe | Sort-Object Name))
+    {
+        $Status = 'Info'
+        $Note = ''
+        If ($G.Group | Where-Object { $_.Typ -eq 'user' -and $_.Inaktiv -eq 'True' })
+        {
+            $Status = 'Prüfen'
+            $Note = 'Enthält inaktive Konten'
+        }
+        & $AddCheck 'Privilegierte Gruppen' $G.Name $G.Count $Status $Note
+    }
+
+    # header information
+    $HeaderRows = New-Object System.Collections.Generic.List[Object]
+    $Get = { param($Rows, $Key) ($Rows | Where-Object { $_.Category -eq $Key } | Select-Object -First 1).Value }
+    $HeaderRows.Add([PSCustomObject] [ordered] @{ 'Angabe' = 'Domäne'; 'Wert' = (& $Get $DomainInfo 'Name') })
+    $HeaderRows.Add([PSCustomObject] [ordered] @{ 'Angabe' = 'NetBIOS'; 'Wert' = (& $Get $DomainInfo 'NetBIOS') })
+    $HeaderRows.Add([PSCustomObject] [ordered] @{ 'Angabe' = 'Domänenfunktionsebene'; 'Wert' = (& $Get $DomainInfo 'Functional Level') })
+    $HeaderRows.Add([PSCustomObject] [ordered] @{ 'Angabe' = 'Gesamtstrukturfunktionsebene'; 'Wert' = (& $Get $ForestInfo 'Functional Level') })
+    $HeaderRows.Add([PSCustomObject] [ordered] @{ 'Angabe' = 'Erstellt'; 'Wert' = (& $Get $About 'Date') })
+    $HeaderRows.Add([PSCustomObject] [ordered] @{ 'Angabe' = 'Ausgeführt als'; 'Wert' = (& $Get $About 'Ran as user') })
+    $HeaderRows.Add([PSCustomObject] [ordered] @{ 'Angabe' = 'Ausgeführt auf'; 'Wert' = (& $Get $About 'Ran on computer') })
+    If ($DormantDays) { $HeaderRows.Add([PSCustomObject] [ordered] @{ 'Angabe' = 'Inaktiv ab'; 'Wert' = "$DormantDays Tagen" }) }
+
+    Try
+    {
+        # --- Übersicht
+        $Sheet = 'Übersicht'
+        $Pkg = $HeaderRows | Export-Excel -Path $XlsxFile -WorksheetName $Sheet -StartRow 3 -TableName 'Header' -TableStyle Light1 -AutoSize -PassThru
+        $Ws = $Pkg.Workbook.Worksheets[$Sheet]
+        $Ws.Cells['A1'].Value = 'Active Directory Audit'
+        $Ws.Cells['A1'].Style.Font.Size = 16
+        $Ws.Cells['A1'].Style.Font.Bold = $true
+        $ChecksStart = $HeaderRows.Count + 6
+        Close-ExcelPackage $Pkg
+        If ($Checks.Count -gt 0)
+        {
+            $Pkg = $Checks | Export-Excel -Path $XlsxFile -WorksheetName $Sheet -StartRow $ChecksStart -TableName 'Checks' -TableStyle Medium2 -AutoSize -NoNumberConversion 'Wert' -PassThru
+            $Ws = $Pkg.Workbook.Worksheets[$Sheet]
+            $LastRow = $ChecksStart + $Checks.Count
+            Add-ConditionalFormatting -Worksheet $Ws -Address "D$($ChecksStart + 1):D$LastRow" -RuleType Equal -ConditionValue '"Prüfen"' -BackgroundColor ([System.Drawing.Color]::FromArgb(255, 199, 206)) -ForegroundColor ([System.Drawing.Color]::FromArgb(156, 0, 6))
+            Add-ConditionalFormatting -Worksheet $Ws -Address "D$($ChecksStart + 1):D$LastRow" -RuleType Equal -ConditionValue '"OK"' -BackgroundColor ([System.Drawing.Color]::FromArgb(198, 239, 206)) -ForegroundColor ([System.Drawing.Color]::FromArgb(0, 97, 0))
+            $Ws.Cells["A$($ChecksStart - 1)"].Value = 'Prüfpunkte'
+            $Ws.Cells["A$($ChecksStart - 1)"].Style.Font.Bold = $true
+            $Ws.Cells["A$($ChecksStart - 1)"].Style.Font.Size = 13
+            # fixed widths (AutoSize is not reliable for two tables on one sheet)
+            $Ws.Column(1).Width = 28
+            $Ws.Column(2).Width = 46
+            $Ws.Column(3).Width = 12
+            $Ws.Column(4).Width = 11
+            $Ws.Column(5).Width = 72
+            $Ws.Cells["C$($ChecksStart + 1):D$LastRow"].Style.HorizontalAlignment = [OfficeOpenXml.Style.ExcelHorizontalAlignment]::Center
+            Close-ExcelPackage $Pkg
+        }
+
+        # --- detail sheets
+        $Detail = @(
+            @{ Sheet = 'Auffällige Konten'; Table = 'Findings'; Rows = @($Findings | Sort-Object Befund, Konto) }
+            @{ Sheet = 'Privilegierte Gruppen'; Table = 'PrivilegedGroups'; Rows = $PrivMembers }
+            @{ Sheet = 'Inaktive Benutzer'; Table = 'InactiveUsers'; Rows = @( $EnabledUsers | Where-Object { $InactiveColUser -and (& $IsTrue $_.$InactiveColUser) } | Sort-Object UserName | ForEach-Object {
+                [PSCustomObject] [ordered] @{
+                    'Konto'                  = $_.UserName
+                    'Name'                   = $_.Name
+                    'Letzte Anmeldung'       = $(If ($_.'Last Logon (all DCs)') { $_.'Last Logon (all DCs)' } Else { $_.'Last Logon Date' })
+                    'Nie angemeldet'         = $_.'Never Logged in'
+                    'Kennwort läuft nie ab' = $_.'Password Never Expires'
+                    'Erstellt'               = $_.whenCreated
+                    'Beschreibung'           = $_.Description
+                    'Pfad'                   = $_.DistinguishedName
+                } } ) }
+            @{ Sheet = 'Inaktive Computer'; Table = 'InactiveComputers'; Rows = @( $EnabledComps | Where-Object { $InactiveColComp -and (& $IsTrue $_.$InactiveColComp) } | Sort-Object Name | ForEach-Object {
+                [PSCustomObject] [ordered] @{
+                    'Computer'         = $_.Name
+                    'Betriebssystem'   = $_.'Operating System'
+                    'Letzte Anmeldung' = $(If ($_.'Last Logon (all DCs)') { $_.'Last Logon (all DCs)' } Else { $_.'Last Logon Date' })
+                    'IPv4'             = $_.IPv4Address
+                    'Erstellt'         = $_.whenCreated
+                    'Beschreibung'     = $_.Description
+                    'Pfad'             = $_.'Distinguished Name'
+                } } ) }
+        )
+        ForEach ($D in $Detail)
+        {
+            If (@($D.Rows).Count -gt 0)
             {
-                $SheetName = $CsvFile.BaseName
-                If ($SheetName.Length -gt 31)
-                {
-                    $SheetName = $SheetName.Substring(0, 31)
-                }
-                $Data | Export-Excel -Path $XlsxFile -WorksheetName $SheetName -AutoSize -AutoFilter -FreezeTopRow -BoldTopRow
+                $D.Rows | Export-Excel -Path $XlsxFile -WorksheetName $D.Sheet -TableName $D.Table -TableStyle Medium2 -AutoSize -FreezeTopRow -NoNumberConversion $NoNumberConversion
             }
         }
-        Catch
+
+        # --- statistics with charts
+        If ($Users.Count -gt 0 -or $Computers.Count -gt 0)
         {
-            Write-Warning "[Export-ADRExcelSimple] Error while adding $($CsvFile.Name)"
-            Write-Verbose "[EXCEPTION] $($_.Exception.Message)"
+            $Sheet = 'Statistik'
+            $Pkg = Open-ExcelPackage -Path $XlsxFile
+            $Ws = Add-Worksheet -ExcelPackage $Pkg -WorksheetName $Sheet
+            $Row = 1
+            If ($Users.Count -gt 0)
+            {
+                $InactiveCount = @( $EnabledUsers | Where-Object { $InactiveColUser -and (& $IsTrue $_.$InactiveColUser) } ).Count
+                $UserStatus = @(
+                    @('Aktiv', ($EnabledUsers.Count - $InactiveCount)),
+                    @('Aktiviert, aber inaktiv', $InactiveCount),
+                    @('Deaktiviert', ($Users.Count - $EnabledUsers.Count))
+                )
+                $Ws.Cells[$Row, 1].Value = 'Benutzerstatus'
+                $Ws.Cells[$Row, 2].Value = 'Anzahl'
+                $Ws.Cells[$Row, 1, $Row, 2].Style.Font.Bold = $true
+                $First = $Row + 1
+                ForEach ($S in $UserStatus)
+                {
+                    $Row++
+                    $Ws.Cells[$Row, 1].Value = $S[0]
+                    $Ws.Cells[$Row, 2].Value = [int] $S[1]
+                }
+                $Chart = $Ws.Drawings.AddChart('BenutzerstatusChart', [OfficeOpenXml.Drawing.Chart.eChartType]::Pie)
+                $Chart.Title.Text = 'Benutzerstatus'
+                $Serie = $Chart.Series.Add($Ws.Cells[$First, 2, $Row, 2], $Ws.Cells[$First, 1, $Row, 1])
+                $Chart.SetPosition(0, 0, 3, 0)
+                $Chart.SetSize(480, 300)
+                $Chart.DataLabel.ShowPercent = $true
+                $Row += 15
+            }
+            If ($Computers.Count -gt 0)
+            {
+                $OsStats = @( $EnabledComps | Group-Object { If ($_.'Operating System') { [string] $_.'Operating System' } Else { '(unbekannt)' } } | Sort-Object Count -Descending )
+                $Ws.Cells[$Row, 1].Value = 'Betriebssystem (aktivierte Computer)'
+                $Ws.Cells[$Row, 2].Value = 'Anzahl'
+                $Ws.Cells[$Row, 1, $Row, 2].Style.Font.Bold = $true
+                $First = $Row + 1
+                ForEach ($O in $OsStats)
+                {
+                    $Row++
+                    $Ws.Cells[$Row, 1].Value = $O.Name
+                    $Ws.Cells[$Row, 2].Value = [int] $O.Count
+                }
+                If ($OsStats.Count -gt 0)
+                {
+                    $Chart = $Ws.Drawings.AddChart('BetriebssystemChart', [OfficeOpenXml.Drawing.Chart.eChartType]::BarClustered)
+                    $Chart.Title.Text = 'Betriebssysteme (aktivierte Computer)'
+                    $Serie = $Chart.Series.Add($Ws.Cells[$First, 2, $Row, 2], $Ws.Cells[$First, 1, $Row, 1])
+                    $Serie.Header = 'Anzahl'
+                    $Chart.Legend.Remove()
+                    $Chart.SetPosition($First - 2, 0, 3, 0)
+                    $Chart.SetSize(640, [Math]::Max(300, 28 * $OsStats.Count + 80))
+                }
+            }
+            $Ws.Column(1).Width = 45
+            $Ws.Column(2).Width = 10
+            Close-ExcelPackage $Pkg
         }
+
+        # --- raw data
+        $Order = @('Users','Computers','Groups','GroupMembers','DomainControllers','DefaultPasswordPolicy','FineGrainedPasswordPolicy','OUs','GPOs','gPLinks','UserSPNs','ComputerSPNs','GroupChanges','Domain','Forest','Trusts','Sites','Subnets','SchemaHistory','DNSZones','DNSNodes','Printers','LAPS','BitLockerRecoveryKeys','DACLs','SACLs','Kerberoast','DomainAccountsusedforServiceLogon','PasswordAttributes','AboutADRecon')
+        $CsvFiles = @( Get-ChildItem -Path $ReportPath -Filter '*.csv' | Sort-Object { $Index = [Array]::IndexOf($Order, $_.BaseName); If ($Index -lt 0) { 999 } Else { $Index } }, Name )
+        ForEach ($CsvFile in $CsvFiles)
+        {
+            Try
+            {
+                $Data = @( Import-Csv -Path $CsvFile.FullName -Delimiter (Get-ADRCsvDelimiter -Path $CsvFile.FullName) )
+                If ($Data.Count -gt 0)
+                {
+                    $SheetName = $CsvFile.BaseName
+                    If ($SheetName.Length -gt 31)
+                    {
+                        $SheetName = $SheetName.Substring(0, 31)
+                    }
+                    $TableName = 'T_' + ($CsvFile.BaseName -replace '[^A-Za-z0-9_]', '')
+                    $Pkg = $Data | Export-Excel -Path $XlsxFile -WorksheetName $SheetName -TableName $TableName -TableStyle Light9 -AutoSize -FreezeTopRow -NoNumberConversion $NoNumberConversion -PassThru
+                    $Ws = $Pkg.Workbook.Worksheets[$SheetName]
+                    # highlight inactive and risky flags in Users/Computers
+                    $Headers = @( $Data[0].PSObject.Properties.Name )
+                    $LastRow = $Data.Count + 1
+                    ForEach ($Col in @($InactiveColUser, $InactiveColComp, 'Password Never Expires', 'Password Not Required', 'Does Not Require Pre Auth', 'Reversible Password Encryption', 'Never Logged in') | Select-Object -Unique)
+                    {
+                        If (-not $Col) { Continue }
+                        $Index = [Array]::IndexOf($Headers, $Col)
+                        If ($Index -ge 0)
+                        {
+                            $Letter = [OfficeOpenXml.ExcelCellAddress]::GetColumnLetter($Index + 1)
+                            Add-ConditionalFormatting -Worksheet $Ws -Address "$($Letter)2:$($Letter)$LastRow" -RuleType Equal -ConditionValue '"True"' -BackgroundColor ([System.Drawing.Color]::FromArgb(255, 199, 206)) -ForegroundColor ([System.Drawing.Color]::FromArgb(156, 0, 6))
+                        }
+                    }
+                    Close-ExcelPackage $Pkg
+                }
+            }
+            Catch
+            {
+                Write-Warning "[Export-ADRExcelSimple] Error while adding $($CsvFile.Name)"
+                Write-Verbose "[EXCEPTION] $($_.Exception.Message)"
+            }
+        }
+
+        # Übersicht as active sheet
+        $Pkg = Open-ExcelPackage -Path $XlsxFile
+        ForEach ($W in $Pkg.Workbook.Worksheets) { $W.View.TabSelected = $false }
+        $Pkg.Workbook.Worksheets['Übersicht'].View.TabSelected = $true
+        $Pkg.Workbook.View.ActiveTab = 0
+        Close-ExcelPackage $Pkg
+    }
+    Catch
+    {
+        Write-Warning "[Export-ADRExcelSimple] Error while creating the report: $($_.Exception.Message)"
+        Write-Verbose "[EXCEPTION] $($_.Exception.ToString())"
     }
     If (Test-Path $XlsxFile)
     {

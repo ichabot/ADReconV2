@@ -72,7 +72,7 @@ If (-not $hasExcel -and -not $hasImportExcel -and $InstallImportExcel -ne 'No')
         {
             Write-Host ''
             Write-Host 'Auf diesem Rechner ist kein Microsoft Excel installiert.'
-            Write-Host 'Fuer einen Excel-Report (ein Tabellenblatt je Bereich, mit Filter und fixierter Kopfzeile)'
+            Write-Host 'Fuer den Excel-Audit-Report (Uebersicht mit Pruefpunkten, Auffaellige Konten, Diagramme)'
             Write-Host 'kann das PowerShell-Modul ImportExcel aus der PowerShell Gallery installiert werden.'
             Write-Host 'Es wird nur fuer den aktuellen Benutzer installiert, Excel selbst wird nicht benoetigt.'
             Write-Host 'Ohne das Modul entstehen nur CSV-Dateien.'
