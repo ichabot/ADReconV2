@@ -1155,7 +1155,8 @@ namespace ADRecon
                 try
                 {
                     PSObject AdGroup = (PSObject) record;
-                    ADWSClass.AdGroupDictionary.Add((Convert.ToString(AdGroup.Properties["SID"].Value)), (Convert.ToString(AdGroup.Members["SamAccountName"].Value)));
+                    // fork: lock, the dictionary is filled from several threads
+                    lock (ADWSClass.AdGroupDictionary) { ADWSClass.AdGroupDictionary.Add((Convert.ToString(AdGroup.Properties["SID"].Value)), (Convert.ToString(AdGroup.Members["SamAccountName"].Value))); }
                     return new PSObject[] { };
                 }
                 catch (Exception e)
@@ -1395,7 +1396,8 @@ namespace ADRecon
                 try
                 {
                     PSObject AdGPO = (PSObject) record;
-                    ADWSClass.AdGPODictionary.Add((Convert.ToString(AdGPO.Members["DistinguishedName"].Value).ToUpper()), (Convert.ToString(AdGPO.Members["DisplayName"].Value)));
+                    // fork: lock, the dictionary is filled from several threads
+                    lock (ADWSClass.AdGPODictionary) { ADWSClass.AdGPODictionary.Add((Convert.ToString(AdGPO.Members["DistinguishedName"].Value).ToUpper()), (Convert.ToString(AdGPO.Members["DisplayName"].Value))); }
                     return new PSObject[] { };
                 }
                 catch (Exception e)
@@ -1734,7 +1736,8 @@ namespace ADRecon
                         case "user":
                         case "computer":
                         case "group":
-                            ADWSClass.AdSIDDictionary.Add(Convert.ToString(AdObject.Members["objectsid"].Value), Convert.ToString(AdObject.Members["Name"].Value));
+                            // fork: lock, the dictionary is filled from several threads
+                            lock (ADWSClass.AdSIDDictionary) { ADWSClass.AdSIDDictionary.Add(Convert.ToString(AdObject.Members["objectsid"].Value), Convert.ToString(AdObject.Members["Name"].Value)); }
                             break;
                     }
                     return new PSObject[] { };
@@ -2919,7 +2922,8 @@ namespace ADRecon
                 try
                 {
                     SearchResult AdGroup = (SearchResult) record;
-                    LDAPClass.AdGroupDictionary.Add((Convert.ToString(new SecurityIdentifier((byte[])AdGroup.Properties["objectSID"][0], 0))),(Convert.ToString(AdGroup.Properties["samaccountname"][0])));
+                    // fork: lock, the dictionary is filled from several threads
+                    lock (LDAPClass.AdGroupDictionary) { LDAPClass.AdGroupDictionary.Add((Convert.ToString(new SecurityIdentifier((byte[])AdGroup.Properties["objectSID"][0], 0))),(Convert.ToString(AdGroup.Properties["samaccountname"][0]))); }
                     return new PSObject[] { };
                 }
                 catch (Exception e)
@@ -3145,7 +3149,8 @@ namespace ADRecon
                 try
                 {
                     SearchResult AdGPO = (SearchResult) record;
-                    LDAPClass.AdGPODictionary.Add((Convert.ToString(AdGPO.Properties["distinguishedname"][0]).ToUpper()), (Convert.ToString(AdGPO.Properties["displayname"][0])));
+                    // fork: lock, the dictionary is filled from several threads
+                    lock (LDAPClass.AdGPODictionary) { LDAPClass.AdGPODictionary.Add((Convert.ToString(AdGPO.Properties["distinguishedname"][0]).ToUpper()), (Convert.ToString(AdGPO.Properties["displayname"][0]))); }
                     return new PSObject[] { };
                 }
                 catch (Exception e)
@@ -3486,7 +3491,8 @@ namespace ADRecon
                         case "user":
                         case "computer":
                         case "group":
-                            LDAPClass.AdSIDDictionary.Add(Convert.ToString(new SecurityIdentifier((byte[])AdObject.Properties["objectSID"][0], 0)), (Convert.ToString(AdObject.Properties["name"][0])));
+                            // fork: lock, the dictionary is filled from several threads
+                            lock (LDAPClass.AdSIDDictionary) { LDAPClass.AdSIDDictionary.Add(Convert.ToString(new SecurityIdentifier((byte[])AdObject.Properties["objectSID"][0], 0)), (Convert.ToString(AdObject.Properties["name"][0]))); }
                             break;
                     }
                     return new PSObject[] { };

@@ -53,6 +53,7 @@ Lizenz unverändert AGPL-3.0, siehe `LICENSE.md`.
 - `Invoke-ADAudit.ps1` setzt PowerShell 7 voraus und bricht unter Windows PowerShell 5.1 mit Download-Hinweis ab.
 - Methode ADWS nur, wenn das AD-Modul nativ unter PowerShell 7 läuft, sonst LDAP.
 - Eigene CSV-Dateien und Zusammenfassung als UTF-8 mit BOM.
+- Fehler im Original behoben: Gruppen-, GPO- und SID-Zuordnungen wurden von mehreren Threads ohne Sperre geschrieben (unter PowerShell 7 „Operations that change non-concurrent collections…“, fehlende Gruppenmitgliedschaften).
 - Fehler im Original behoben: Unter PowerShell 7 lief nach dem Kompilieren zusätzlich der Zweig für PowerShell 2.0 (`-Language CSharpVersion3`) und brach ab.
 
 ### Nicht getestet
