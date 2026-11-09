@@ -77,7 +77,7 @@ If ($PSVersionTable.PSVersion.Major -lt 7)
 }
 
 $ErrorActionPreference = 'Stop'
-$ForkUrl = 'https://raw.githubusercontent.com/ichabot/ADReconV2/HEAD/ADRecon.ps1'
+$ForkRepo = 'ichabot/ADReconV2'
 
 If ($UseCredential -and -not $DomainController)
 {
@@ -162,6 +162,24 @@ Try
         $toolDir = Join-Path $BaseDir 'ADRecon'
         New-Item -ItemType Directory -Path $toolDir -Force | Out-Null
         $tool = Join-Path $toolDir 'ADRecon.ps1'
+        # aktuellen Commit ermitteln und per Commit-ID laden (raw.githubusercontent.com cached HEAD bis zu 5 Minuten)
+        $commit = $null
+        Try
+        {
+            $commit = [string] (Invoke-RestMethod -Uri "https://api.github.com/repos/$ForkRepo/commits/HEAD" -Headers @{ Accept = 'application/vnd.github.sha' } -TimeoutSec 20)
+        }
+        Catch
+        {
+            Write-Verbose "GitHub-API nicht erreichbar: $($_.Exception.Message)"
+        }
+        If ($commit -match '^[0-9a-f]{40}$')
+        {
+            $ForkUrl = "https://raw.githubusercontent.com/$ForkRepo/$commit/ADRecon.ps1"
+        }
+        Else
+        {
+            $ForkUrl = "https://raw.githubusercontent.com/$ForkRepo/HEAD/ADRecon.ps1?nocache=$(Get-Date -Format 'yyyyMMddHHmmss')"
+        }
         Write-Host "[*] Lade ADRecon aus $ForkUrl"
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
         Invoke-WebRequest -Uri $ForkUrl -OutFile $tool -UseBasicParsing
