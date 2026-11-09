@@ -167,7 +167,11 @@ Try
         $summary.Add('Direkte Mitglieder privilegierter Gruppen (Gruppen als Mitglied sind mit aufgefuehrt):')
         ForEach ($g in ($members | Group-Object 'Group Name' | Sort-Object Name))
         {
-            $summary.Add("  $($g.Name) ($($g.Count)): $((($g.Group | ForEach-Object { $_.'Member UserName' }) | Sort-Object -Unique) -join ', ')")
+            # Gruppen als Mitglied haben bei ADRecon keinen UserName ("-"), dann den Namen nehmen
+            $names = $g.Group | ForEach-Object {
+                If ($_.AccountType -eq 'group' -or $_.'Member UserName' -eq '-') { "[Gruppe] $($_.'Member Name')" } Else { $_.'Member UserName' }
+            }
+            $summary.Add("  $($g.Name) ($($g.Count)): $(($names | Sort-Object -Unique) -join ', ')")
         }
         $members | Export-Csv -Path (Join-Path $outDir 'Privilegierte-Gruppen.csv') -NoTypeInformation -Delimiter ';' -Encoding UTF8
     }
