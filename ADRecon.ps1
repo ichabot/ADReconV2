@@ -40,13 +40,21 @@
 
 .NOTES
 
-    Modified version (fork ichabot/ADReconV2, 2026-11) of ADRecon v1.27 by Prashant Mahajan.
-    Changes: see CHANGELOG-FORK.md. Summary:
-      - Computers: IPv4 lookup moved out of the ADWS enumeration (fixes "Invalid enumeration context"), optional -SkipDNSResolve
-      - Users/Computers: new column "Inactive (> n days)" incl. never logged on accounts, optional -PreciseLastLogon (lastLogon of all DCs)
-      - CSV: UTF-8 with BOM, optional -CsvDelimiter ';'
-      - Default collection no longer includes LAPS passwords and BitLocker recovery keys
-      - Excel audit report (overview, findings, charts) via ImportExcel module when Microsoft Excel is not installed
+    MODIFIED VERSION
+    This file is a modified version of ADRecon v1.27 (https://github.com/adrecon/ADRecon, commit d2ba12c)
+    by Prashant Mahajan and contributors. Modified by ichabot (https://github.com/ichabot/ADReconV2),
+    first modification 2026-11-09. Licensed under the GNU Affero General Public License v3.0 (see LICENSE.md),
+    like the original. Detailed list of changes: CHANGELOG-FORK.md, change dates: git history.
+
+    Summary of changes:
+      - Computers (ADWS): IPv4 lookup moved out of the enumeration (fixes "Invalid enumeration context"), -SkipDNSResolve
+      - Thread safety: shared group/GPO/SID dictionaries are locked
+      - PowerShell 7: exclusive Add-Type branches (no CSharpVersion3 on Core), Excel interop lookup
+      - Users/Computers: column "Inactive (> n days)" incl. never logged on accounts, -PreciseLastLogon (lastLogon of all DCs)
+      - CSV: UTF-8 with BOM, -CsvDelimiter ';'
+      - Default collection without LAPS passwords and BitLocker recovery keys
+      - Excel audit report via ImportExcel when Microsoft Excel is not installed
+      - Banner, About sheet and links point to ADReconV2, logo off by default (-Logo None)
 
     The following commands can be used to turn off ExecutionPolicy: (Requires Admin Privs)
 

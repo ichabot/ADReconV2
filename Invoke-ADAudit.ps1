@@ -33,6 +33,10 @@
     pwsh -ExecutionPolicy Bypass -File .\Invoke-ADAudit.ps1 -InstallImportExcel Yes
 
 .NOTES
+    Teil von ADReconV2 (https://github.com/ichabot/ADReconV2), ichabot 2026.
+    Lizenz: GNU Affero General Public License v3.0 (siehe LICENSE.md), wie ADRecon.
+    Startet ADRecon.ps1, eine veraenderte Fassung von ADRecon v1.27 (Prashant Mahajan, https://github.com/adrecon/ADRecon).
+
     Voraussetzung: PowerShell 7 (pwsh). Unter Windows PowerShell 5.1 bricht das Skript mit einem Hinweis ab.
     Download: https://github.com/PowerShell/PowerShell/releases/latest
 
