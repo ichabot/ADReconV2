@@ -1,242 +1,162 @@
-# ADReconV2 – Fork von ADRecon
+# ADReconV2
 
-> **Fork** von [adrecon/ADRecon](https://github.com/adrecon/ADRecon) (v1.27, Commit `d2ba12c`, Lizenz AGPL-3.0).
-> Angepasst für AD-Audits in kleinen und mittleren Umgebungen. Alle Änderungen: [CHANGELOG-FORK.md](CHANGELOG-FORK.md).
-> Nicht offiziell, kein Support durch das Original-Projekt.
+AD-Audit für kleine und mittlere Umgebungen auf Basis von [ADRecon](https://github.com/adrecon/ADRecon).
+Erfasst Benutzer, Gruppen, Gruppenmitgliedschaften, Computer, OUs, GPOs und Kennwortrichtlinien,
+markiert inaktive Konten und fasst die wichtigsten Punkte in einer Kurzübersicht zusammen.
 
-## Was ist anders
-
-- Fix für `Invalid enumeration context` / `Ungültiger Aufzählungskontext` im Modul Computers (ADWS)
-- Neue Spalte **„Inactive (> n days)“** für Benutzer und Computer, inklusive nie angemeldeter Konten
-- `-PreciseLastLogon`: exakte letzte Anmeldung über `lastLogon` aller DCs
-- `-CsvDelimiter ';'` und CSV als UTF-8 mit BOM (Umlaute, deutsches Excel)
-- `-SkipDNSResolve`: keine DNS-Auflösung der Computer
-- LAPS-Passwörter und BitLocker-Keys nicht mehr in der Standardauswahl
-- Excel-Report ohne installiertes Excel über das Modul ImportExcel (vereinfacht)
-
-## Schnellstart KMU-Audit
-
-```powershell
-# auf einem domänenverbundenen Rechner, normale PowerShell reicht
-powershell -ExecutionPolicy Bypass -File .\Invoke-ADAudit.ps1
-# andere Grenze / anderer Zielordner
-powershell -ExecutionPolicy Bypass -File .\Invoke-ADAudit.ps1 -DormantDays 60 -BaseDir D:\Audit
-```
-
-Direkt aus GitHub starten (lädt `ADRecon.ps1` nach `C:\AD-Audit\ADRecon\`):
-
-```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/ichabot/ADReconV2/HEAD/Invoke-ADAudit.ps1)))
-# mit Parametern
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/ichabot/ADReconV2/HEAD/Invoke-ADAudit.ps1))) -DormantDays 60
-```
-
-`Invoke-ADAudit.ps1` erstellt unter `C:\AD-Audit\Report-<Datum>`:
-- `CSV-Files\` und Excel-Report von ADRecon
-- `Zusammenfassung.txt` (Benutzerzahlen, inaktive Konten, Mitglieder privilegierter Gruppen)
-- `Inaktive-Benutzer.csv`, `Privilegierte-Gruppen.csv`
-- `Audit-Protokoll.txt`
-
-Der Report-Ordner ist nur für Administratoren, SYSTEM und den ausführenden Benutzer lesbar.
-
-**Virenscanner:** Sophos/Defender melden ADRecon häufig als Hacktool. Ausnahme vorher mit dem Kunden bzw. SOC abstimmen.
+> Fork von adrecon/ADRecon v1.27 (Commit `d2ba12c`), Lizenz AGPL-3.0.
+> Kein offizielles Projekt, kein Support durch die Original-Autoren. Änderungen: [CHANGELOG-FORK.md](CHANGELOG-FORK.md)
 
 ---
 
-## Original-README
+## Schnellstart
 
-# ADRecon: Active Directory Recon [![Follow ADRecon on Twitter](https://img.shields.io/twitter/follow/ad_recon.svg?style=social&label=Follow%20%40ad_recon)](https://twitter.com/intent/user?screen_name=ad_recon "Follow ADRecon on Twitter")
+PowerShell auf einem domänenverbundenen Server oder Client öffnen und ausführen:
 
-This [repo](https://github.com/adrecon/ADRecon) contains updates to the original [concept and code](https://github.com/sense-of-security/adrecon) by Prashant Mahajan (@prashant3535) while working at [Sense of Security](https://senseofsecurity.com.au).
-
-ADRecon is a tool which extracts and combines various artefacts (as highlighted below) out of an AD environment. The information can be presented in a specially formatted Microsoft Excel report that includes summary views with metrics to facilitate analysis and provide a holistic picture of the current state of the target AD environment.
-
-The tool is useful to various classes of security professionals like auditors, DFIR, students, administrators, etc. It can also be an invaluable post-exploitation tool for a penetration tester.
-
-It can be run from any workstation that is connected to the environment, even hosts that are not domain members. Furthermore, the tool can be executed in the context of a non-privileged (i.e. standard domain user) account. Fine Grained Password Policy, LAPS and BitLocker may require Privileged user accounts. The tool will use Microsoft Remote Server Administration Tools (RSAT) if available, otherwise it will communicate with the Domain Controller using LDAP.
-
-The following information is gathered by the tool:
-
-* Forest;
-* Domain;
-* Trusts;
-* Sites;
-* Subnets;
-* Schema History;
-* Default and Fine Grained Password Policy (if implemented);
-* Domain Controllers, SMB versions, whether SMB Signing is supported and FSMO roles;
-* Users and their attributes;
-* Service Principal Names (SPNs);
-* Groups, memberships and changes;
-* Organizational Units (OUs);
-* GroupPolicy objects and gPLink details;
-* DNS Zones and Records;
-* Printers;
-* Computers and their attributes;
-* PasswordAttributes (Experimental);
-* LAPS passwords (if implemented);
-* BitLocker Recovery Keys (if implemented);
-* ACLs (DACLs and SACLs) for the Domain, OUs, Root Containers, GPO, Users, Computers and Groups objects (not included in the default collection method);
-* GPOReport (requires RSAT);
-* Kerberoast (not included in the default collection method); and
-* Domain accounts used for service accounts (requires privileged account and not included in the default collection method).
-
-ADRecon was presented at: [![Black Hat Arsenal Asia 2018](https://github.com/toolswatch/badges/blob/master/arsenal/asia/2018.svg)](https://www.blackhat.com/asia-18/arsenal.html#adrecon-active-directory-recon) - [Slidedeck](https://speakerdeck.com/prashant3535/adrecon-bh-asia-2018-arsenal-presentation)
-
-[![Black Hat Arsenal USA 2018](https://github.com/toolswatch/badges/blob/master/arsenal/usa/2018.svg)](https://www.blackhat.com/us-18/arsenal/schedule/index.html#adrecon-active-directory-recon-11912) | [![DEFCON 26 Demolabs](https://hackwith.github.io/badges/defcon/26/demolabs.svg)](https://www.defcon.org/html/defcon-26/dc-26-demolabs.html) - [Slidedeck](https://speakerdeck.com/prashant3535/adrecon-bh-usa-2018-arsenal-and-def-con-26-demo-labs-presentation)
-
-[Bay Area OWASP](https://www.meetup.com/en-AU/Bay-Area-OWASP/events/253585385/) - [Slidedeck](https://speakerdeck.com/prashant3535/active-directory-recon-101-owasp-bay-area-presentation)
-
-[CHCON](https://2018.chcon.nz/mainevent.html) - [Slidedeck](https://speakerdeck.com/prashant3535/adrecon-detection-chcon-2018)
-
-## Getting Started
-
-These instructions will get you a copy of the tool up and running on your local machine.
-
-### Prerequisites
-
-* .NET Framework 3.0 or later (Windows 7 includes 3.0)
-* PowerShell 2.0 or later (Windows 7 includes 2.0)
-    * Powershell Core on Windows is supported (Tested on PowerShell v7.2.2 running on Windows 10)
-* A Windows host (Powershell for Linux/macOS is not supported)
-
-### Optional
-
-* Microsoft Excel (to generate the report)
-* Remote Server Administration Tools (RSAT):
-    * Windows 10 (October 2018 Update or 1809 and later), RSAT is included as a set of `Features on Demand`.
-        * Click on Start --> Settings --> Apps --> Apps & features --> Manage optional features --> Add a feature --> Select the following:
-            * RSAT: Active Directory Domain Services and Lightweight Directory Services Tools
-            * RSAT: Group Policy Management Tools
-    * Windows 10 (https://www.microsoft.com/en-au/download/details.aspx?id=45520)
-    * Windows 7 (https://www.microsoft.com/en-au/download/details.aspx?id=7887)
-
-### Installing
-
-If you have git installed, you can start by cloning the [repository](https://github.com/adrecon/ADRecon/):
-
-```
-git clone https://github.com/adrecon/ADRecon.git
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/ichabot/ADReconV2/HEAD/Invoke-ADAudit.ps1)))
 ```
 
-Otherwise, you can [download a zip archive of the latest release](https://github.com/adrecon/ADRecon/archive/master.zip). The intent is to always keep the master branch in a working state.
+Das war's. Der Lauf dauert je nach Umgebung wenige Sekunden bis einige Minuten.
+Das Ergebnis liegt danach unter `C:\AD-Audit\Report-<Datum-Uhrzeit>\`.
 
-## Usage
+### Mit Parametern
 
-### Examples
+Parameter werden einfach hinten angehängt:
 
-To run ADRecon on a domain member host.
+```powershell
+# Inaktiv ab 60 statt 30 Tagen
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/ichabot/ADReconV2/HEAD/Invoke-ADAudit.ps1))) -DormantDays 60
 
-```
-PS C:\> .\ADRecon.ps1
-```
+# Von einem Rechner außerhalb der Domäne mit eigenem Konto
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/ichabot/ADReconV2/HEAD/Invoke-ADAudit.ps1))) -DomainController dc01.firma.local -UseCredential
 
-To run ADRecon on a domain member host as a different user.
-
-```
-PS C:\>.\ADRecon.ps1 -DomainController <IP or FQDN> -Credential <domain\username>
-```
-
-To run ADRecon on a non-member host using LDAP.
-
-```
-PS C:\>.\ADRecon.ps1 -Method LDAP -DomainController <IP or FQDN> -Credential <domain\username>
+# ADRecon.ps1 neu aus dem Repo laden (nach Updates)
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/ichabot/ADReconV2/HEAD/Invoke-ADAudit.ps1))) -Update
 ```
 
-To run ADRecon with specific modules on a non-member host with RSAT. (Default OutputType is STDOUT with -Collect parameter)
+### Ohne Internet auf dem Server
 
-```
-PS C:\>.\ADRecon.ps1 -Method ADWS -DomainController <IP or FQDN> -Credential <domain\username> -Collect Domain, DomainControllers
-```
+1. `Invoke-ADAudit.ps1` und `ADRecon.ps1` aus diesem Repo herunterladen und zusammen in einen Ordner legen (z. B. per USB-Stick).
+2. Auf dem Server ausführen:
 
-To generate the ADRecon-Report.xlsx based on ADRecon output (CSV Files).
-
-```
-PS C:\>.\ADRecon.ps1 -GenExcel C:\ADRecon-Report-<timestamp>
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Invoke-ADAudit.ps1
 ```
 
-When you run ADRecon, a `ADRecon-Report-<timestamp>` folder will be created which will contain ADRecon-Report.xlsx and CSV-Folder with the raw files.
+---
 
-### Parameters
+## Parameter von Invoke-ADAudit.ps1
+
+| Parameter | Standard | Bedeutung |
+|---|---|---|
+| `-DormantDays` | `30` | Ab wie vielen Tagen ohne Anmeldung ein Konto als inaktiv gilt |
+| `-BaseDir` | `C:\AD-Audit` | Arbeitsordner für ADRecon und die Reports |
+| `-DomainController` | – | DC (FQDN), nötig bei `-UseCredential` |
+| `-UseCredential` | aus | Fragt ein Domänenkonto ab (für Rechner außerhalb der Domäne) |
+| `-PreciseLastLogon` | `$true` | Liest die letzte Anmeldung von jedem DC (genau). `-PreciseLastLogon $false` nutzt nur `lastLogonTimestamp` (bis ca. 14 Tage ungenau) |
+| `-SkipDNSResolve` | aus | Keine DNS-Auflösung der Computer, schnellerer Lauf |
+| `-Update` | aus | ADRecon.ps1 neu herunterladen |
+
+---
+
+## Ergebnis
 
 ```
--Method <String>
-    Which method to use; ADWS (default), LDAP
-
--DomainController <String>
-    Domain Controller IP Address or Domain FQDN.
-
--Credential <PSCredential>
-    Domain Credentials.
-
--GenExcel <String>
-    Path for ADRecon output folder containing the CSV files to generate the ADRecon-Report.xlsx. Use it to generate the ADRecon-Report.xlsx when Microsoft Excel is not installed on the host used to run ADRecon.
-
--OutputDir <String>
-    Path for ADRecon output folder to save the CSV/XML/JSON/HTML files and the ADRecon-Report.xlsx. (The folder specified will be created if it doesn't exist) (Default pwd)
-
--Collect <String>
-    Which modules to run (Comma separated; e.g Forest,Domain. Default all except ACLs, Kerberoast and DomainAccountsusedforServiceLogon)
-    Valid values include: Forest, Domain, Trusts, Sites, Subnets, SchemaHistory, PasswordPolicy, FineGrainedPasswordPolicy, DomainControllers, Users, UserSPNs, PasswordAttributes, Groups, GroupChanges, GroupMembers, OUs, ACLs, GPOs, gPLinks, GPOReport, DNSZones, DNSRecords, Printers, Computers, ComputerSPNs, LAPS, BitLocker, Kerberoast DomainAccountsusedforServiceLogon.
-
--OutputType <String>
-    Output Type; Comma seperated; e.g CSV,STDOUT,Excel (Default STDOUT with -Collect parameter, else CSV and Excel).
-    Valid values include: STDOUT, CSV, XML, JSON, HTML, Excel, All (excludes STDOUT).
-
--DormantTimeSpan <Int>
-    Timespan for Dormant accounts. (Default 90 days)
-
--PassMaxAge <Int>
-    Maximum machine account password age. (Default 30 days)
-
--PageSize <Int>
-    The PageSize to set for the LDAP searcher object. (Default 200)
-
--Threads <Int>
-    The number of threads to use during processing objects (Default 10)
-
--OnlyEnabled <Bool>
-    Only collect details for enabled objects.
-
--Log <Switch>
-    Create ADRecon Log using Start-Transcript
-
--Logo <String>
-    Which Logo to use in the excel file? (Default ADRecon)
-    Values include: ADRecon, CyberCX, Payatu.
+C:\AD-Audit\Report-20261109-1530\
+├── Zusammenfassung.txt          Kurzübersicht (Benutzerzahlen, inaktive Konten, privilegierte Gruppen)
+├── Inaktive-Benutzer.csv        aktivierte Benutzer ohne Anmeldung seit n Tagen bzw. nie angemeldet
+├── Privilegierte-Gruppen.csv    Mitglieder von Domänen-Admins, Administratoren, Schema-/Organisations-Admins usw.
+├── Audit-Protokoll.txt          komplette Konsolenausgabe
+├── <Domäne>ADRecon-Report.xlsx  Excel-Report (wenn Excel installiert ist)
+├── ADRecon-Report-Simple.xlsx   vereinfachter Report (ohne Excel, mit Modul ImportExcel)
+└── CSV-Files\                   Rohdaten je Modul (Users, Groups, GroupMembers, Computers, ...)
 ```
 
-### Future Plans
+Alle CSV-Dateien nutzen Semikolon und UTF-8, sie lassen sich in einem deutschen Excel per Doppelklick öffnen.
 
-* Replace System.DirectoryServices.DirectorySearch with System.DirectoryServices.Protocols and add support for LDAP STARTTLS and LDAPS (TCP port 636).
-* ~~Add Domain Trust Enumeration.~~
-* Add option to filter default ACLs.
-* ~~Gather ACLs for other objects such as Users, Group, etc.~~
-* Additional export and storage option: export to ~~STDOUT~~, SQLite, ~~xml~~, ~~json~~, ~~html~~, pdf.
-* Use the EPPlus library for Excel Report generation and remove the dependency on MS Excel.
-* List issues identified and provide recommended remediation advice based on analysis of the data.
-* Add PowerShell Core support.
+**Wichtige Spalten in `Users.csv` und `Computers.csv`:**
 
-### Bugs, Issues and Feature Requests
+| Spalte | Bedeutung |
+|---|---|
+| `Inactive (> 30 days)` | `True` = keine Anmeldung seit 30 Tagen, oder nie angemeldet und älter als 30 Tage |
+| `Last Logon (all DCs)` | letzte Anmeldung, neuester Wert aller DCs |
+| `Never Logged in` | hat sich nie angemeldet |
+| `Enabled` | Konto aktiviert |
 
-Please report all bugs, issues and feature requests in the [issue tracker](https://github.com/adrecon/ADRecon/issues). Or let me (@prashant3535) know directly.
+Privilegierte Gruppen werden über die SID erkannt und funktionieren daher auch mit deutschen Gruppennamen.
+Aufgeführt werden direkte Mitglieder; enthaltene Gruppen erscheinen als eigener Eintrag.
 
-### Contributing
+---
 
-Pull request are always welcome.
+## Was wird erfasst
 
-### Mad props
+Forest, Domäne, Trusts, Sites, Subnetze, Kennwortrichtlinien (inkl. Fine Grained), Domain Controller,
+Benutzer, Benutzer-SPNs, Gruppen, Gruppenmitglieder, Gruppenänderungen, OUs, GPOs, GPO-Verknüpfungen, Computer.
 
-Thanks for the awesome work by @_wald0, @CptJesus, @harmj0y, @mattifestation, @PyroTek3, @darkoperator, @ITsecurityAU Team, @CTXIS Team, @CxCyber Team, @payatulabs Team and others.
+**Bewusst nicht erfasst:** LAPS-Passwörter, BitLocker-Recovery-Keys, Kerberoast, ACLs.
+Diese können bei Bedarf direkt mit `ADRecon.ps1 -Collect ...` abgefragt werden.
 
-### License
+---
 
-ADRecon is a tool which gathers information about the Active Directory and generates a report which can provide a holistic picture of the current state of the target AD environment.
+## Voraussetzungen
 
-This program is free software: you can redistribute it and/or modify it under the terms of the GNU Affero General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+| | |
+|---|---|
+| **Betriebssystem** | Windows Server 2012 R2 oder neuer, Windows 10/11. Lauffähig ab PowerShell 4.0, empfohlen PowerShell 5.1 |
+| **AD-Modul** | Mit RSAT-AD-PowerShell (auf DCs vorhanden) läuft ADRecon über ADWS, sonst automatisch über LDAP |
+| **Domain Controller** | alle DCs mit AD-Webdiensten (ab Server 2008 R2), bei LDAP keine Einschränkung |
+| **Rechte** | normaler Domänenbenutzer reicht. Fine Grained Password Policies sind nur mit erweiterten Rechten lesbar |
+| **Excel-Report** | Microsoft Excel auf dem Rechner, sonst Modul ImportExcel: `Install-Module ImportExcel -Scope CurrentUser` (benötigt PowerShell 5.1) |
+| **Download** | Zugriff auf `raw.githubusercontent.com` (TLS 1.2 wird im Skript aktiviert) |
 
-This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more details.
+RSAT nachinstallieren:
 
-You should have received a copy of the GNU Affero General Public License along with this program. If not, see http://www.gnu.org/licenses/.
+```powershell
+# Server
+Install-WindowsFeature RSAT-AD-PowerShell
+# Windows 10/11
+Add-WindowsCapability -Online -Name Rsat.ActiveDirectory.DS-LDS.Tools~~~~0.0.1.0
+```
 
-This program borrows and uses code from many sources. All attempts are made to credit the original author. If you find that your code is used without proper credit, please shoot an insult to @prashant3535, Thanks.
+---
+
+## Virenscanner
+
+Sophos, Defender und andere Scanner melden ADRecon häufig als Hacktool, weil es auch von Angreifern zur Aufklärung genutzt wird.
+Vor dem Einsatz beim Kunden abstimmen und bei Bedarf eine Ausnahme setzen:
+
+- **AMSI-Erkennung:** Ausnahme auf den Pfad `C:\AD-Audit\ADRecon\ADRecon.ps1`
+- **PUA-Erkennung:** Ausnahme mit dem im Event angezeigten Namen
+
+Ausnahmen nach dem Audit wieder entfernen.
+
+---
+
+## Sicherheit
+
+- Der Report enthält eine vollständige Übersicht über Benutzer, Gruppen, Computer und Richtlinien.
+- Der Report-Ordner wird beim Anlegen auf Administratoren, SYSTEM und den ausführenden Benutzer beschränkt.
+- Report nach dem Abholen vom Server löschen.
+- ADRecon liest nur. Es werden keine Änderungen im AD vorgenommen.
+
+---
+
+## ADRecon direkt verwenden
+
+`ADRecon.ps1` lässt sich wie das Original nutzen, mit diesen zusätzlichen Parametern:
+
+```powershell
+.\ADRecon.ps1 -DormantTimeSpan 30 -PreciseLastLogon -CsvDelimiter ';'
+.\ADRecon.ps1 -Collect Users,Groups,GroupMembers -OutputType CSV -CsvDelimiter ';'
+.\ADRecon.ps1 -SkipDNSResolve
+```
+
+Alle Parameter des Originals: [ORIGINAL-README.md](ORIGINAL-README.md)
+
+---
+
+## Lizenz und Herkunft
+
+ADRecon © Prashant Mahajan und Mitwirkende, ursprünglich bei Sense of Security, Lizenz [AGPL-3.0](LICENSE.md).
+Dieser Fork steht unter derselben Lizenz. Änderungen sind in [CHANGELOG-FORK.md](CHANGELOG-FORK.md) und im Kopf von `ADRecon.ps1` dokumentiert.

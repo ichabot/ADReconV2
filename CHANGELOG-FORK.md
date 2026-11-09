@@ -40,6 +40,7 @@ Lizenz unverändert AGPL-3.0, siehe `LICENSE.md`.
 ### Repo
 - Semgrep-Workflow entfernt (benötigt ein Token des Original-Projekts und würde täglich fehlschlagen).
 - `Invoke-ADAudit.ps1`: Wrapper für KMU-Audits (siehe README).
+- README neu geschrieben (Schnellstart, Parameter, Voraussetzungen), Original-README in `ORIGINAL-README.md`.
 
 ### Nicht getestet
 Die Änderungen sind per PowerShell-Parser und C#-Compiler geprüft, aber noch nicht gegen ein echtes AD gelaufen.
