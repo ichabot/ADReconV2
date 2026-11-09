@@ -49,5 +49,10 @@ Lizenz unverändert AGPL-3.0, siehe `LICENSE.md`.
   Urheber- und Lizenzhinweise im Quelltext bleiben erhalten (AGPL-3.0).
 - `Invoke-ADAudit.ps1` fragt ohne installiertes Excel vor dem Lauf, ob ImportExcel installiert werden soll (`-InstallImportExcel Ask|Yes|No`).
 
+### Voraussetzung PowerShell 7
+- `Invoke-ADAudit.ps1` setzt PowerShell 7 voraus und bricht unter Windows PowerShell 5.1 mit Download-Hinweis ab.
+- Methode ADWS nur, wenn das AD-Modul nativ unter PowerShell 7 läuft, sonst LDAP.
+- Eigene CSV-Dateien und Zusammenfassung als UTF-8 mit BOM.
+
 ### Nicht getestet
 Die Änderungen sind per PowerShell-Parser und C#-Compiler geprüft, aber noch nicht gegen ein echtes AD gelaufen.

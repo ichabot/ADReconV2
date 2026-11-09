@@ -11,7 +11,7 @@ markiert inaktive Konten und fasst die wichtigsten Punkte in einer Kurzübersich
 
 ## Schnellstart
 
-PowerShell auf einem domänenverbundenen Server oder Client öffnen und ausführen:
+**PowerShell 7** (`pwsh`) auf einem domänenverbundenen Server oder Client öffnen und ausführen:
 
 ```powershell
 & ([scriptblock]::Create((irm https://raw.githubusercontent.com/ichabot/ADReconV2/HEAD/Invoke-ADAudit.ps1)))
@@ -42,7 +42,7 @@ Parameter werden einfach hinten angehängt:
 2. Auf dem Server ausführen:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\Invoke-ADAudit.ps1
+pwsh -ExecutionPolicy Bypass -File .\Invoke-ADAudit.ps1
 ```
 
 ---
@@ -120,14 +120,21 @@ Diese können bei Bedarf direkt mit `ADRecon.ps1 -Collect ...` abgefragt werden.
 
 | | |
 |---|---|
-| **Betriebssystem** | Windows Server 2012 R2 oder neuer, Windows 10/11. Lauffähig ab PowerShell 4.0, empfohlen PowerShell 5.1 |
-| **AD-Modul** | Mit RSAT-AD-PowerShell (auf DCs vorhanden) läuft ADRecon über ADWS, sonst automatisch über LDAP |
+| **PowerShell** | **PowerShell 7** (`pwsh`). Unter Windows PowerShell 5.1 bricht `Invoke-ADAudit.ps1` mit Hinweis und Download-Link ab |
+| **Betriebssystem** | Windows Server oder Windows-Client, auf dem PowerShell 7 läuft, domänenverbunden (sonst `-DomainController` und `-UseCredential`) |
+| **AD-Modul** | Läuft das AD-Modul nativ unter PowerShell 7 (RSAT ab Server 2019 / Windows 10 1809), nutzt ADRecon ADWS, sonst automatisch LDAP. RSAT ist nicht zwingend |
 | **Domain Controller** | alle DCs mit AD-Webdiensten (ab Server 2008 R2), bei LDAP keine Einschränkung |
 | **Rechte** | normaler Domänenbenutzer reicht. Fine Grained Password Policies sind nur mit erweiterten Rechten lesbar |
-| **Excel-Report** | Microsoft Excel auf dem Rechner, sonst Modul ImportExcel: `Install-Module ImportExcel -Scope CurrentUser` (benötigt PowerShell 5.1) |
+| **Excel-Report** | Microsoft Excel auf dem Rechner, sonst Modul ImportExcel: `Install-Module ImportExcel -Scope CurrentUser` (fragt das Skript vorab) |
 | **Download** | Zugriff auf `raw.githubusercontent.com` (TLS 1.2 wird im Skript aktiviert) |
 
-RSAT nachinstallieren:
+PowerShell 7 installieren:
+
+- Download (MSI `PowerShell-7.x.x-win-x64.msi`): https://github.com/PowerShell/PowerShell/releases/latest
+- Anleitung: https://learn.microsoft.com/powershell/scripting/install/installing-powershell-on-windows
+- oder: `winget install --id Microsoft.PowerShell --source winget`
+
+RSAT nachinstallieren (optional):
 
 ```powershell
 # Server

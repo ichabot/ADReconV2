@@ -16,23 +16,26 @@
       3. Download aus github.com/ichabot/ADReconV2 nach <BaseDir>\ADRecon\
 
 .EXAMPLE
-    powershell -ExecutionPolicy Bypass -File .\Invoke-ADAudit.ps1
+    pwsh -ExecutionPolicy Bypass -File .\Invoke-ADAudit.ps1
 
 .EXAMPLE
-    powershell -ExecutionPolicy Bypass -File .\Invoke-ADAudit.ps1 -DormantDays 60 -BaseDir D:\Audit
+    pwsh -ExecutionPolicy Bypass -File .\Invoke-ADAudit.ps1 -DormantDays 60 -BaseDir D:\Audit
 
 .EXAMPLE
-    powershell -ExecutionPolicy Bypass -File .\Invoke-ADAudit.ps1 -DomainController dc01.firma.local -UseCredential
+    pwsh -ExecutionPolicy Bypass -File .\Invoke-ADAudit.ps1 -DomainController dc01.firma.local -UseCredential
 
 .EXAMPLE
     # ADRecon.ps1 neu aus dem Repo laden, auch wenn schon eine Fork-Version vorhanden ist
-    powershell -ExecutionPolicy Bypass -File .\Invoke-ADAudit.ps1 -Update
+    pwsh -ExecutionPolicy Bypass -File .\Invoke-ADAudit.ps1 -Update
 
 .EXAMPLE
     # ohne Rueckfrage: ImportExcel bei Bedarf installieren (Yes) oder nie (No)
-    powershell -ExecutionPolicy Bypass -File .\Invoke-ADAudit.ps1 -InstallImportExcel Yes
+    pwsh -ExecutionPolicy Bypass -File .\Invoke-ADAudit.ps1 -InstallImportExcel Yes
 
 .NOTES
+    Voraussetzung: PowerShell 7 (pwsh). Unter Windows PowerShell 5.1 bricht das Skript mit einem Hinweis ab.
+    Download: https://github.com/PowerShell/PowerShell/releases/latest
+
     Sophos/Defender erkennen ADRecon haeufig als Hacktool. Ausnahme vorher abstimmen
     (AMSI-Ausnahme auf den Pfad von ADRecon.ps1 bzw. PUA-Ausnahme mit dem gemeldeten Namen).
 #>
@@ -48,6 +51,31 @@ param(
     [string] $InstallImportExcel = 'Ask'
 )
 
+# Voraussetzung PowerShell 7 (nur damit getestet). 'Return' statt 'Exit', damit die Konsole beim Einzeiler offen bleibt.
+If ($PSVersionTable.PSVersion.Major -lt 7)
+{
+    $OneLiner = '& ([scriptblock]::Create((irm https://raw.githubusercontent.com/ichabot/ADReconV2/HEAD/Invoke-ADAudit.ps1)))'
+    Write-Host ''
+    Write-Host "[!] Dieses Skript benoetigt PowerShell 7. Aktuell laeuft PowerShell $($PSVersionTable.PSVersion)." -ForegroundColor Yellow
+    If (Get-Command pwsh -ErrorAction SilentlyContinue)
+    {
+        Write-Host '    PowerShell 7 ist installiert. Bitte "pwsh" starten (als Administrator) und dort ausfuehren:'
+        Write-Host "    $OneLiner"
+    }
+    Else
+    {
+        Write-Host '    Download (MSI, z. B. PowerShell-7.x.x-win-x64.msi):'
+        Write-Host '    https://github.com/PowerShell/PowerShell/releases/latest'
+        Write-Host '    Anleitung: https://learn.microsoft.com/powershell/scripting/install/installing-powershell-on-windows'
+        Write-Host '    Alternativ mit winget: winget install --id Microsoft.PowerShell --source winget'
+        Write-Host ''
+        Write-Host '    Danach "pwsh" starten (als Administrator) und dort ausfuehren:'
+        Write-Host "    $OneLiner"
+    }
+    Write-Host ''
+    Return
+}
+
 $ErrorActionPreference = 'Stop'
 $ForkUrl = 'https://raw.githubusercontent.com/ichabot/ADReconV2/HEAD/ADRecon.ps1'
 
@@ -61,47 +89,35 @@ $hasExcel       = Test-Path 'Registry::HKEY_CLASSES_ROOT\Excel.Application'
 $hasImportExcel = [bool](Get-Module -ListAvailable -Name ImportExcel)
 If (-not $hasExcel -and -not $hasImportExcel -and $InstallImportExcel -ne 'No')
 {
-    If ($PSVersionTable.PSVersion.Major -lt 5)
+    $answer = 'j'
+    If ($InstallImportExcel -eq 'Ask')
     {
-        Write-Host '[!] Kein Excel und kein Modul ImportExcel. Installation erst ab PowerShell 5.1 moeglich, es werden nur CSV-Dateien erstellt.'
+        Write-Host ''
+        Write-Host 'Auf diesem Rechner ist kein Microsoft Excel installiert.'
+        Write-Host 'Fuer den Excel-Audit-Report (Uebersicht mit Pruefpunkten, Auffaellige Konten, Diagramme)'
+        Write-Host 'kann das PowerShell-Modul ImportExcel aus der PowerShell Gallery installiert werden.'
+        Write-Host 'Es wird nur fuer den aktuellen Benutzer installiert, Excel selbst wird nicht benoetigt.'
+        Write-Host 'Ohne das Modul entstehen nur CSV-Dateien.'
+        $answer = Read-Host 'ImportExcel jetzt installieren? [j/N]'
+    }
+    If ($answer -match '^(j|ja|y|yes)$')
+    {
+        Try
+        {
+            Install-Module -Name ImportExcel -Scope CurrentUser -Repository PSGallery -Force -AllowClobber -Confirm:$false
+            Write-Host '[+] ImportExcel installiert.'
+        }
+        Catch
+        {
+            Write-Warning "ImportExcel konnte nicht installiert werden: $($_.Exception.Message)"
+            Write-Host '[!] Es werden nur CSV-Dateien erstellt.'
+        }
     }
     Else
     {
-        $answer = 'j'
-        If ($InstallImportExcel -eq 'Ask')
-        {
-            Write-Host ''
-            Write-Host 'Auf diesem Rechner ist kein Microsoft Excel installiert.'
-            Write-Host 'Fuer den Excel-Audit-Report (Uebersicht mit Pruefpunkten, Auffaellige Konten, Diagramme)'
-            Write-Host 'kann das PowerShell-Modul ImportExcel aus der PowerShell Gallery installiert werden.'
-            Write-Host 'Es wird nur fuer den aktuellen Benutzer installiert, Excel selbst wird nicht benoetigt.'
-            Write-Host 'Ohne das Modul entstehen nur CSV-Dateien.'
-            $answer = Read-Host 'ImportExcel jetzt installieren? [j/N]'
-        }
-        If ($answer -match '^(j|ja|y|yes)$')
-        {
-            Try
-            {
-                [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-                If (-not (Get-PackageProvider -ListAvailable -Name NuGet -ErrorAction SilentlyContinue | Where-Object { $_.Version -ge [version]'2.8.5.201' }))
-                {
-                    Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Scope CurrentUser -Force | Out-Null
-                }
-                Install-Module -Name ImportExcel -Scope CurrentUser -Repository PSGallery -Force -AllowClobber -Confirm:$false
-                Write-Host '[+] ImportExcel installiert.'
-            }
-            Catch
-            {
-                Write-Warning "ImportExcel konnte nicht installiert werden: $($_.Exception.Message)"
-                Write-Host '[!] Es werden nur CSV-Dateien erstellt.'
-            }
-        }
-        Else
-        {
-            Write-Host '[*] Ohne ImportExcel, es werden nur CSV-Dateien erstellt.'
-        }
-        Write-Host ''
+        Write-Host '[*] Ohne ImportExcel, es werden nur CSV-Dateien erstellt.'
     }
+    Write-Host ''
     $hasImportExcel = [bool](Get-Module -ListAvailable -Name ImportExcel)
 }
 
@@ -155,7 +171,10 @@ Try
     Write-Host "[*] ADRecon: $tool"
     Write-Host "[*] SHA256:  $hash"
 
-    $method = If (Get-Module -ListAvailable -Name ActiveDirectory) { 'ADWS' } Else { 'LDAP' }
+    # ADWS nur mit einem AD-Modul, das nativ unter PowerShell 7 laeuft (RSAT ab Server 2019 / Windows 10 1809),
+    # sonst LDAP (kein RSAT noetig)
+    $adModule = Get-Module -ListAvailable -Name ActiveDirectory | Where-Object { $_.CompatiblePSEditions -contains 'Core' } | Select-Object -First 1
+    $method = If ($adModule) { 'ADWS' } Else { 'LDAP' }
 
     $params = @{
         Method           = $method
@@ -199,7 +218,7 @@ Try
         $summary.Add("  aktiviert und nie angemeldet:     $($never.Count)")
         $summary.Add('')
         $inactive | Select-Object UserName, Name, 'Last Logon Date', 'Last Logon (all DCs)', whenCreated, 'Never Logged in' |
-            Export-Csv -Path (Join-Path $outDir 'Inaktive-Benutzer.csv') -NoTypeInformation -Delimiter ';' -Encoding UTF8
+            Export-Csv -Path (Join-Path $outDir 'Inaktive-Benutzer.csv') -NoTypeInformation -Delimiter ';' -Encoding utf8BOM
     }
 
     $groupsCsv  = Join-Path $csvDir 'Groups.csv'
@@ -228,10 +247,10 @@ Try
             }
             $summary.Add("  $($g.Name) ($($g.Count)): $(($names | Sort-Object -Unique) -join ', ')")
         }
-        $members | Export-Csv -Path (Join-Path $outDir 'Privilegierte-Gruppen.csv') -NoTypeInformation -Delimiter ';' -Encoding UTF8
+        $members | Export-Csv -Path (Join-Path $outDir 'Privilegierte-Gruppen.csv') -NoTypeInformation -Delimiter ';' -Encoding utf8BOM
     }
 
-    $summary | Set-Content -Path (Join-Path $outDir 'Zusammenfassung.txt') -Encoding UTF8
+    $summary | Set-Content -Path (Join-Path $outDir 'Zusammenfassung.txt') -Encoding utf8BOM
     Write-Host ''
     $summary | ForEach-Object { Write-Host $_ }
     Write-Host ''
