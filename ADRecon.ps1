@@ -13267,7 +13267,8 @@ Function Invoke-ADRecon
                 ))
                 Remove-Variable refFolder
             }
-            If ($CLR -eq "4")
+            # fork: ElseIf, sonst wird unter PowerShell 7 zusaetzlich der Zweig fuer PowerShell 2.0 (-Language CSharpVersion3) ausgefuehrt
+            ElseIf ($CLR -eq "4")
             {
                 Add-Type -TypeDefinition $($ADWSSource+$PingCastleSMBScannerSource) -ReferencedAssemblies ([System.String[]]@(
                     ([System.Reflection.Assembly]::LoadWithPartialName("Microsoft.ActiveDirectory.Management")).Location
