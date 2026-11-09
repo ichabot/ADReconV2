@@ -24,6 +24,10 @@
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File .\Invoke-ADAudit.ps1 -DomainController dc01.firma.local -UseCredential
 
+.EXAMPLE
+    # ADRecon.ps1 neu aus dem Repo laden, auch wenn schon eine Fork-Version vorhanden ist
+    powershell -ExecutionPolicy Bypass -File .\Invoke-ADAudit.ps1 -Update
+
 .NOTES
     Sophos/Defender erkennen ADRecon haeufig als Hacktool. Ausnahme vorher abstimmen
     (AMSI-Ausnahme auf den Pfad von ADRecon.ps1 bzw. PUA-Ausnahme mit dem gemeldeten Namen).
@@ -34,7 +38,8 @@ param(
     [string] $DomainController,
     [switch] $UseCredential,
     [bool] $PreciseLastLogon = $true,
-    [switch] $SkipDNSResolve
+    [switch] $SkipDNSResolve,
+    [switch] $Update
 )
 
 $ErrorActionPreference = 'Stop'
@@ -61,16 +66,24 @@ Start-Transcript -Path (Join-Path $outDir 'Audit-Protokoll.txt') | Out-Null
 Try
 {
     # ADRecon.ps1 finden oder laden
+    # nur die Fork-Version verwenden (Original kennt -CsvDelimiter, -PreciseLastLogon usw. nicht)
     $tool = $null
     $candidates = @()
     If ($PSScriptRoot) { $candidates += Join-Path $PSScriptRoot 'ADRecon.ps1' }
     $candidates += Join-Path $BaseDir 'ADRecon\ADRecon.ps1'
-    ForEach ($candidate in $candidates)
+    If (-not $Update)
     {
-        If (Test-Path $candidate)
+        ForEach ($candidate in $candidates)
         {
-            $tool = $candidate
-            Break
+            If ((Test-Path $candidate) -and (Select-String -Path $candidate -Pattern 'ADReconVersion = "v1.27-fork' -SimpleMatch -Quiet))
+            {
+                $tool = $candidate
+                Break
+            }
+            ElseIf (Test-Path $candidate)
+            {
+                Write-Host "[!] $candidate ist nicht die Fork-Version und wird ignoriert."
+            }
         }
     }
     If (-not $tool)
