@@ -23,6 +23,14 @@ powershell -ExecutionPolicy Bypass -File .\Invoke-ADAudit.ps1
 powershell -ExecutionPolicy Bypass -File .\Invoke-ADAudit.ps1 -DormantDays 60 -BaseDir D:\Audit
 ```
 
+Direkt aus GitHub starten (lädt `ADRecon.ps1` nach `C:\AD-Audit\ADRecon\`):
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/ichabot/ADReconV2/HEAD/Invoke-ADAudit.ps1)))
+# mit Parametern
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/ichabot/ADReconV2/HEAD/Invoke-ADAudit.ps1))) -DormantDays 60
+```
+
 `Invoke-ADAudit.ps1` erstellt unter `C:\AD-Audit\Report-<Datum>`:
 - `CSV-Files\` und Excel-Report von ADRecon
 - `Zusammenfassung.txt` (Benutzerzahlen, inaktive Konten, Mitglieder privilegierter Gruppen)

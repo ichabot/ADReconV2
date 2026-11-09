@@ -38,7 +38,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$ForkUrl = 'https://raw.githubusercontent.com/ichabot/ADReconV2/master/ADRecon.ps1'
+$ForkUrl = 'https://raw.githubusercontent.com/ichabot/ADReconV2/HEAD/ADRecon.ps1'
 
 If ($UseCredential -and -not $DomainController)
 {
