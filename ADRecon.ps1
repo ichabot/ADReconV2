@@ -6119,7 +6119,7 @@ Function Export-ADRExcel
             }
             Else
             {
-                Write-Warning "[Export-ADRExcel] Microsoft.Office.Interop.Excel not found."
+                Write-Verbose "[Export-ADRExcel] Microsoft.Office.Interop.Excel not found."
             }
             Remove-Variable returndir
             Remove-Variable refFolder
