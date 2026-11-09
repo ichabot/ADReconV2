@@ -17,7 +17,8 @@ PowerShell auf einem domänenverbundenen Server oder Client öffnen und ausführ
 & ([scriptblock]::Create((irm https://raw.githubusercontent.com/ichabot/ADReconV2/HEAD/Invoke-ADAudit.ps1)))
 ```
 
-Das war's. Der Lauf dauert je nach Umgebung wenige Sekunden bis einige Minuten.
+Ist auf dem Rechner kein Excel installiert, fragt das Skript vorab, ob das Modul ImportExcel installiert werden soll (für den Excel-Report).
+Der Lauf dauert je nach Umgebung wenige Sekunden bis einige Minuten.
 Das Ergebnis liegt danach unter `C:\AD-Audit\Report-<Datum-Uhrzeit>\`.
 
 ### Mit Parametern
@@ -57,6 +58,7 @@ powershell -ExecutionPolicy Bypass -File .\Invoke-ADAudit.ps1
 | `-PreciseLastLogon` | `$true` | Liest die letzte Anmeldung von jedem DC (genau). `-PreciseLastLogon $false` nutzt nur `lastLogonTimestamp` (bis ca. 14 Tage ungenau) |
 | `-SkipDNSResolve` | aus | Keine DNS-Auflösung der Computer, schnellerer Lauf |
 | `-Update` | aus | ADRecon.ps1 neu herunterladen |
+| `-InstallImportExcel` | `Ask` | Ohne installiertes Excel: vor dem Lauf fragen, ob das Modul ImportExcel installiert wird. `Yes` installiert ohne Rückfrage, `No` erstellt nur CSV |
 
 ---
 

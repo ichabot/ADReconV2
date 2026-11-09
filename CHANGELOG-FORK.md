@@ -42,5 +42,10 @@ Lizenz unverändert AGPL-3.0, siehe `LICENSE.md`.
 - `Invoke-ADAudit.ps1`: Wrapper für KMU-Audits (siehe README).
 - README neu geschrieben (Schnellstart, Parameter, Voraussetzungen), Original-README in `ORIGINAL-README.md`.
 
+### Ausgabe
+- Konsolen-Banner, About-Blatt und Links im Excel-Report verweisen auf ADReconV2. Logo im Excel-Report standardmäßig aus (`-Logo None`).
+  Urheber- und Lizenzhinweise im Quelltext bleiben erhalten (AGPL-3.0).
+- `Invoke-ADAudit.ps1` fragt ohne installiertes Excel vor dem Lauf, ob ImportExcel installiert werden soll (`-InstallImportExcel Ask|Yes|No`).
+
 ### Nicht getestet
 Die Änderungen sind per PowerShell-Parser und C#-Compiler geprüft, aber noch nicht gegen ein echtes AD gelaufen.

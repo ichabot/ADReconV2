@@ -28,6 +28,10 @@
     # ADRecon.ps1 neu aus dem Repo laden, auch wenn schon eine Fork-Version vorhanden ist
     powershell -ExecutionPolicy Bypass -File .\Invoke-ADAudit.ps1 -Update
 
+.EXAMPLE
+    # ohne Rueckfrage: ImportExcel bei Bedarf installieren (Yes) oder nie (No)
+    powershell -ExecutionPolicy Bypass -File .\Invoke-ADAudit.ps1 -InstallImportExcel Yes
+
 .NOTES
     Sophos/Defender erkennen ADRecon haeufig als Hacktool. Ausnahme vorher abstimmen
     (AMSI-Ausnahme auf den Pfad von ADRecon.ps1 bzw. PUA-Ausnahme mit dem gemeldeten Namen).
@@ -39,7 +43,9 @@ param(
     [switch] $UseCredential,
     [bool] $PreciseLastLogon = $true,
     [switch] $SkipDNSResolve,
-    [switch] $Update
+    [switch] $Update,
+    [ValidateSet('Ask', 'Yes', 'No')]
+    [string] $InstallImportExcel = 'Ask'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -48,6 +54,55 @@ $ForkUrl = 'https://raw.githubusercontent.com/ichabot/ADReconV2/HEAD/ADRecon.ps1
 If ($UseCredential -and -not $DomainController)
 {
     throw 'Mit -UseCredential bitte auch -DomainController <FQDN> angeben.'
+}
+
+# Excel-Report: ohne installiertes Excel wird das Modul ImportExcel benoetigt (Abfrage vor dem Lauf)
+$hasExcel       = Test-Path 'Registry::HKEY_CLASSES_ROOT\Excel.Application'
+$hasImportExcel = [bool](Get-Module -ListAvailable -Name ImportExcel)
+If (-not $hasExcel -and -not $hasImportExcel -and $InstallImportExcel -ne 'No')
+{
+    If ($PSVersionTable.PSVersion.Major -lt 5)
+    {
+        Write-Host '[!] Kein Excel und kein Modul ImportExcel. Installation erst ab PowerShell 5.1 moeglich, es werden nur CSV-Dateien erstellt.'
+    }
+    Else
+    {
+        $answer = 'j'
+        If ($InstallImportExcel -eq 'Ask')
+        {
+            Write-Host ''
+            Write-Host 'Auf diesem Rechner ist kein Microsoft Excel installiert.'
+            Write-Host 'Fuer einen Excel-Report (ein Tabellenblatt je Bereich, mit Filter und fixierter Kopfzeile)'
+            Write-Host 'kann das PowerShell-Modul ImportExcel aus der PowerShell Gallery installiert werden.'
+            Write-Host 'Es wird nur fuer den aktuellen Benutzer installiert, Excel selbst wird nicht benoetigt.'
+            Write-Host 'Ohne das Modul entstehen nur CSV-Dateien.'
+            $answer = Read-Host 'ImportExcel jetzt installieren? [j/N]'
+        }
+        If ($answer -match '^(j|ja|y|yes)$')
+        {
+            Try
+            {
+                [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+                If (-not (Get-PackageProvider -ListAvailable -Name NuGet -ErrorAction SilentlyContinue | Where-Object { $_.Version -ge [version]'2.8.5.201' }))
+                {
+                    Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Scope CurrentUser -Force | Out-Null
+                }
+                Install-Module -Name ImportExcel -Scope CurrentUser -Repository PSGallery -Force -AllowClobber -Confirm:$false
+                Write-Host '[+] ImportExcel installiert.'
+            }
+            Catch
+            {
+                Write-Warning "ImportExcel konnte nicht installiert werden: $($_.Exception.Message)"
+                Write-Host '[!] Es werden nur CSV-Dateien erstellt.'
+            }
+        }
+        Else
+        {
+            Write-Host '[*] Ohne ImportExcel, es werden nur CSV-Dateien erstellt.'
+        }
+        Write-Host ''
+    }
+    $hasImportExcel = [bool](Get-Module -ListAvailable -Name ImportExcel)
 }
 
 $stamp  = Get-Date -Format 'yyyyMMdd-HHmm'
@@ -106,7 +161,7 @@ Try
         Method           = $method
         OutputDir        = $outDir
         DormantTimeSpan  = $DormantDays
-        OutputType       = @('CSV', 'Excel')
+        OutputType       = $(If ($hasExcel -or $hasImportExcel) { @('CSV', 'Excel') } Else { @('CSV') })
         CsvDelimiter     = ';'
         Collect          = @('Forest','Domain','Trusts','Sites','Subnets','PasswordPolicy','FineGrainedPasswordPolicy',
                              'DomainControllers','Users','UserSPNs','Groups','GroupMembers','GroupChanges','OUs',
