@@ -10,7 +10,8 @@ Dieses Repository ist eine veränderte Fassung von **ADRecon** (Prashant Mahajan
 | Lizenz | GNU Affero General Public License v3.0, unverändert übernommen, siehe [LICENSE.md](LICENSE.md) |
 
 Dieser Hinweis erfüllt die Kennzeichnungspflicht nach Abschnitt 5a der AGPL-3.0.
-Die vollständige Änderungshistorie mit Datum je Änderung steht in der Git-Historie dieses Repositorys.
+Die Git-Historie dieses Repositorys beginnt mit einem Import-Commit des unveränderten Originals (Stand `d2ba12c`).
+Alle späteren Commits sind die Änderungen dieses Forks, jeweils mit Datum.
 
 ---
 
@@ -24,7 +25,7 @@ Die vollständige Änderungshistorie mit Datum je Änderung steht in der Git-His
 | `ORIGINAL-README.md` | README des Originals, unverändert ausgelagert |
 | `CHANGELOG-FORK.md` | **neu**: diese Datei |
 | `LICENSE.md` | unverändert |
-| `.github/FUNDING.yml` | unverändert (Spendenhinweis des Original-Autors) |
+| `.github/FUNDING.yml` | **entfernt** (Spendenlink des Original-Autors) |
 | `.github/workflows/semgrep.yml` | **entfernt** (benötigt ein Token des Original-Projekts und würde täglich fehlschlagen) |
 
 ---
