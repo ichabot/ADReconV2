@@ -1,4 +1,4 @@
-# ADRecon – Fork ichabot
+# ADReconV2 – Fork von ADRecon
 
 > **Fork** von [adrecon/ADRecon](https://github.com/adrecon/ADRecon) (v1.27, Commit `d2ba12c`, Lizenz AGPL-3.0).
 > Angepasst für AD-Audits in kleinen und mittleren Umgebungen. Alle Änderungen: [CHANGELOG-FORK.md](CHANGELOG-FORK.md).

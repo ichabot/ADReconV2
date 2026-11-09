@@ -40,7 +40,7 @@
 
 .NOTES
 
-    Modified version (fork ichabot/ADRecon, 2026-11) of ADRecon v1.27 by Prashant Mahajan.
+    Modified version (fork ichabot/ADReconV2, 2026-11) of ADRecon v1.27 by Prashant Mahajan.
     Changes: see CHANGELOG-FORK.md. Summary:
       - Computers: IPv4 lookup moved out of the ADWS enumeration (fixes "Invalid enumeration context"), optional -SkipDNSResolve
       - Users/Computers: new column "Inactive (> n days)" incl. never logged on accounts, optional -PreciseLastLogon (lastLogon of all DCs)

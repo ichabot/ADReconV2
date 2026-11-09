@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    AD-Audit fuer KMU mit ADRecon (Fork ichabot/ADRecon).
+    AD-Audit fuer KMU mit ADRecon (Fork ichabot/ADReconV2).
 
 .DESCRIPTION
     Startet ADRecon mit einer reduzierten Modulauswahl (Domaene, Benutzer, Gruppen, Mitgliedschaften,
@@ -13,7 +13,7 @@
     ADRecon.ps1 wird in dieser Reihenfolge gesucht:
       1. im Ordner dieses Skripts
       2. <BaseDir>\ADRecon\ADRecon.ps1
-      3. Download aus github.com/ichabot/ADRecon nach <BaseDir>\ADRecon\
+      3. Download aus github.com/ichabot/ADReconV2 nach <BaseDir>\ADRecon\
 
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File .\Invoke-ADAudit.ps1
@@ -38,7 +38,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$ForkUrl = 'https://raw.githubusercontent.com/ichabot/ADRecon/master/ADRecon.ps1'
+$ForkUrl = 'https://raw.githubusercontent.com/ichabot/ADReconV2/master/ADRecon.ps1'
 
 If ($UseCredential -and -not $DomainController)
 {
